@@ -63,6 +63,10 @@ After writing a scraper, add it to `SCRAPERS` in `backend/app/main.py`. The `POS
 
 `docs/EVENT_SOURCES.md` tracks all known and prospective event sources, their integration status (integrated, planned, investigating, deferred, rejected), and notes on feasibility. **Update that file whenever sourcing changes** — adding a scraper, retiring one, deferring a candidate, or recording a feasibility finding (feed format, signal quality, ToS).
 
+### Category Taxonomy
+
+The closed set of event category tags lives in `backend/app/categories.py` (`CATEGORIES`, `CATEGORY_DESCRIPTIONS`). The same list is mirrored with descriptions in `docs/EVENT_SOURCES.md` under "Category Taxonomy". The LLM tagging pass (Step 4) imports from the module to constrain its output. When changing the taxonomy, update both the module and the doc together — they should always agree.
+
 ### Ingestion (`backend/app/ingest.py`)
 
 All scrapers share `ingest_events(source_name, raw_events, db)`. It handles:

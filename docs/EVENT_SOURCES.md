@@ -180,3 +180,26 @@ Direct sources, generally worth their own scraper for completeness and richer da
 - Scraper type prospect: ical
 - Status: **deferred**
 - Reason: Low-interest events. The feed is dominated by internal university meetings, academic talks, and departmental gatherings — not the public-interest things-to-do this calendar is meant to surface. Scraper code was written but never registered in `SCRAPERS`. Revisit only if a better-filtered feed or category-restricted endpoint becomes available.
+
+---
+
+## Category Taxonomy
+
+Events are tagged with zero or more categories from a closed vocabulary. The canonical list lives in `backend/app/categories.py` — that module is the source of truth referenced by the LLM tagging pass (Step 4). When the taxonomy changes, update both files together.
+
+Multi-tagging is allowed (e.g. a UW author event may be both **Visual Art** and **Talks & Learning**; a family concert is both **Music** and **Family & Kids**).
+
+- **Music** — concerts, jams, DJ sets, songwriter circles (excludes open mics)
+- **Open Mic & Comedy** — open mics (any genre), stand-up, improv
+- **Theater & Stage** — plays, staged readings, performance art, dance performances meant to be watched
+- **Visual Art** — gallery exhibits, museum events, artist talks, studio tours
+- **Dance** — social/participatory dance: salsa, tango, contra, swing, ballroom, folk practices
+- **Trivia & Games** — pub trivia, bingo, board games, Lego nights
+- **Food & Drink** — farmers' markets, food festivals, tastings, brewery/restaurant events
+- **Health & Wellness** — yoga, meditation, group fitness, group walks
+- **Outdoors & Nature** — birding, hikes, conservation work, park events, gardening
+- **Talks & Learning** — lectures, panels, classes, workshops, book clubs, author readings
+- **Civic & Politics** — government meetings, town halls, candidate forums, advocacy
+- **Family & Kids** — story hours, kid-targeted programming
+- **Community & Clubs** — hobby clubs, social meetups, identity-based gatherings, networking, Toastmasters
+- **Volunteer & Causes** — volunteer work days, blood drives, fundraisers, charity
