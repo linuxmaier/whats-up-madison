@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Event
@@ -17,7 +17,11 @@ def get_events(
     date: Optional[datetime.date] = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(Event)
+    query = (
+        db.query(Event)
+        .options(joinedload(Event.sources))
+        .filter(Event.status == "active")
+    )
     if date:
         query = query.filter(
             func.date(Event.start_at) <= date,

@@ -5,7 +5,7 @@ A self-populating events calendar for Madison, WI. Automatically aggregates even
 ## Architecture
 
 - **Backend:** Python / FastAPI + PostgreSQL (SQLAlchemy ORM)
-- **Frontend:** React / Vite (date picker + event card list)
+- **Frontend:** React / Vite + Tailwind CSS (date picker + event card list)
 - **Scrapers:** per-source plugins (API, iCal, HTML) run on a daily schedule
 - **Local dev:** Docker Compose
 
@@ -15,6 +15,7 @@ A self-populating events calendar for Madison, WI. Automatically aggregates even
 
 - Docker + Docker Compose
 - [miniconda](https://docs.conda.io/en/latest/miniconda.html) (for local Python tooling)
+- Node.js + npm (for frontend)
 
 ### 1. Create the conda environment
 
@@ -47,8 +48,6 @@ docker compose up
 
 ### 4. Start the frontend (dev)
 
-> **Note:** The frontend is not yet built (planned for Step 2). This step will work once `frontend/` exists.
-
 ```
 cd frontend
 npm install
@@ -57,23 +56,38 @@ npm run dev
 
 - Frontend: http://localhost:5173
 
+### 5. Seed initial events
+
+```
+curl -X POST http://localhost:8000/admin/scrape
+```
+
+This runs all registered scrapers and populates the database. APScheduler (daily automation) is planned for Step 3.
+
 ## Project Structure
 
 ```
 whats-up-madison/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI app entry point
-│   │   ├── models.py        # SQLAlchemy models (Event, Source)
+│   │   ├── main.py          # FastAPI app entry point + /admin/scrape
+│   │   ├── models.py        # SQLAlchemy models (Event, EventSource, Source)
 │   │   ├── schemas.py       # Pydantic response schemas
+│   │   ├── ingest.py        # Shared scraper ingestion utility
 │   │   ├── routers/
 │   │   │   └── events.py    # GET /events?date=YYYY-MM-DD
 │   │   └── scrapers/
 │   │       ├── base.py      # RawEvent dataclass + BaseSource interface
+│   │       ├── isthmus.py
 │   │       └── ...          # one module per source
 │   ├── Dockerfile
 │   └── requirements.txt
-├── frontend/                # React / Vite app (not yet scaffolded)
+├── frontend/                # React / Vite + Tailwind CSS
+│   └── src/
+│       ├── App.jsx
+│       └── components/
+│           ├── DatePicker.jsx
+│           └── EventCard.jsx
 ├── docker-compose.yml
 └── local_management/        # gitignored — machine-local notes and commands
 ```
@@ -81,40 +95,47 @@ whats-up-madison/
 ## Roadmap
 
 - **Step 1 — Skeleton** ✅ Repo structure, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
-- **Step 2 — First scraper + frontend** UW-Madison iCal feed wired end-to-end; React/Vite frontend with date picker and event cards linking to original sources
-- **Step 3 — More scrapers** Eventbrite API, City of Madison, Isthmus, individual venue HTML scrapers; deduplication logic; APScheduler for daily runs
+- **Step 2 — First scraper + frontend** ✅ Multi-source data model (`Event`/`EventSource`), ingestion utility, React/Vite/Tailwind frontend with date picker and event cards
+- **Step 3 — More scrapers** 🔄 Isthmus integrated (iCal + RSS, 30-day window); Eventbrite API, City of Madison, individual venue HTML scrapers, APScheduler for daily runs still planned
 - **Step 4 — Categories** LLM analysis of accumulated events to propose a category taxonomy; category filtering added to the frontend
 
 ## Adding a Scraper
 
 1. Create `backend/app/scrapers/<source_name>.py`
 2. Subclass `BaseSource` and implement `fetch() -> list[RawEvent]`
-3. Register the source in the scheduler (see `app/main.py`)
+3. Add an instance to `SCRAPERS` in `backend/app/main.py`
 
-Each `RawEvent` has a `canonical_hash()` method that generates a deduplication key from the normalized title, start date, and venue name.
+Each `RawEvent` has a `canonical_hash()` method that generates a deduplication key from the normalized title, start date, and venue name. The shared `ingest_events()` function handles upserts, multi-source linking, and event status tracking automatically.
 
 ## API
 
 ### `GET /events`
 
-Returns events for a given date. Long-running events appear on every date within their range.
+Returns active events for a given date. Long-running events appear on every date within their range. Only `status=active` events are returned.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `date` | `YYYY-MM-DD` | Date to query (optional — returns all events if omitted) |
+| `date` | `YYYY-MM-DD` | Date to query (optional — returns all active events if omitted) |
 
 ```json
 [
   {
     "id": "...",
     "title": "Example Event",
-    "start_at": "2025-06-01T19:00:00-05:00",
+    "start_at": "2025-06-01T19:00:00Z",
     "end_at": null,
     "venue_name": "The Sylvee",
     "venue_address": "25 S Livingston St, Madison, WI",
     "categories": [],
-    "source_name": "Eventbrite",
-    "source_url": "https://..."
+    "status": "active",
+    "sources": [
+      {"source_name": "Isthmus", "source_url": "https://isthmus.com/events/..."},
+      {"source_name": "Eventbrite", "source_url": "https://..."}
+    ]
   }
 ]
 ```
+
+### `POST /admin/scrape`
+
+Triggers all registered scrapers and ingests results. Returns per-source stats.

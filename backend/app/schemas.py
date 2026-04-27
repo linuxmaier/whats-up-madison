@@ -5,6 +5,13 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
+class SourceRef(BaseModel):
+    source_name: str
+    source_url: str
+
+    model_config = {"from_attributes": True}
+
+
 class EventResponse(BaseModel):
     id: UUID
     title: str
@@ -15,7 +22,7 @@ class EventResponse(BaseModel):
     venue_address: Optional[str] = None
     categories: list[str] = []
     image_url: Optional[str] = None
-    source_name: str
-    source_url: str
+    status: str
+    sources: list[SourceRef] = []
 
     model_config = {"from_attributes": True}
