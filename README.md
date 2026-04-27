@@ -78,6 +78,13 @@ whats-up-madison/
 └── local_management/        # gitignored — machine-local notes and commands
 ```
 
+## Roadmap
+
+- **Step 1 — Skeleton** ✅ Repo structure, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
+- **Step 2 — First scraper + frontend** UW-Madison iCal feed wired end-to-end; React/Vite frontend with date picker and event cards linking to original sources
+- **Step 3 — More scrapers** Eventbrite API, City of Madison, Isthmus, individual venue HTML scrapers; deduplication logic; APScheduler for daily runs
+- **Step 4 — Categories** LLM analysis of accumulated events to propose a category taxonomy; category filtering added to the frontend
+
 ## Adding a Scraper
 
 1. Create `backend/app/scrapers/<source_name>.py`
