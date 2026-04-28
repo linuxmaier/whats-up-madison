@@ -7,6 +7,7 @@ from app.database import Base, engine, get_db
 from app.ingest import ingest_events
 from app.routers import events
 from app.scrapers.isthmus import IsthmusSource
+from app.scrapers.visit_madison import VisitMadisonSource
 
 Base.metadata.create_all(bind=engine)
 
@@ -21,7 +22,7 @@ app.add_middleware(
 
 app.include_router(events.router)
 
-SCRAPERS = [IsthmusSource()]
+SCRAPERS = [IsthmusSource(), VisitMadisonSource()]
 
 
 @app.get("/health")

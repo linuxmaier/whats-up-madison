@@ -96,7 +96,7 @@ whats-up-madison/
 
 - **Step 1 — Skeleton** ✅ Repo structure, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
 - **Step 2 — First scraper + frontend** ✅ Multi-source data model (`Event`/`EventSource`), ingestion utility, React/Vite/Tailwind frontend with date picker and event cards
-- **Step 3 — More scrapers** 🔄 Isthmus integrated (iCal + RSS, 30-day window); Eventbrite API, City of Madison, individual venue HTML scrapers, APScheduler for daily runs still planned
+- **Step 3 — More scrapers** 🔄 Isthmus integrated (iCal + RSS, 30-day window) and Visit Madison integrated (Simpleview JSON API, 30-day window, with category pre-tagging from the source's own taxonomy); Eventbrite API, City of Madison, individual venue HTML scrapers, APScheduler for daily runs still planned
 - **Step 4 — Categories** LLM analysis of accumulated events to propose a category taxonomy; category filtering added to the frontend
 
 ## Adding a Scraper
@@ -105,7 +105,9 @@ whats-up-madison/
 2. Subclass `BaseSource` and implement `fetch() -> list[RawEvent]`
 3. Add an instance to `SCRAPERS` in `backend/app/main.py`
 
-Each `RawEvent` has a `canonical_hash()` method that generates a deduplication key from the normalized title, start date, and venue name. The shared `ingest_events()` function handles upserts, multi-source linking, and event status tracking automatically.
+Each `RawEvent` has a `canonical_hash()` method that generates a deduplication key from the normalized title, start date, and venue name. The shared `ingest_events()` function handles upserts, multi-source linking, category merging, and event status tracking automatically.
+
+If the source has its own category taxonomy that maps cleanly to ours (`backend/app/categories.py`), populate `RawEvent.categories` per event to save LLM cost in the Step 4 tagging pass. Map conservatively — drop ambiguous source categories rather than mis-tagging.
 
 ## API
 

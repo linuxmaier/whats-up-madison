@@ -13,6 +13,15 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
     inserted = 0
     updated = 0
 
+    # Collapse raws that share a canonical_hash — a single source can return
+    # multiple records that map to the same event (e.g. Visit Madison lists two
+    # recurring "Volunteer at Foodbank" series with different recids but the
+    # same title/date/venue). They produce one Event row, so we must produce
+    # one EventSource row too — otherwise the (event_id, source_name) unique
+    # constraint trips. We keep the first occurrence and union categories from
+    # the rest.
+    raw_events = _dedupe_by_hash(raw_events)
+
     for raw in raw_events:
         hash_ = raw.canonical_hash()
 
@@ -26,6 +35,7 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
                 venue_name=raw.venue_name,
                 venue_address=raw.venue_address,
                 image_url=raw.image_url,
+                categories=list(raw.categories),
                 canonical_hash=hash_,
                 status="active",
             )
@@ -37,6 +47,12 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
             for field in _FILLABLE_FIELDS:
                 if getattr(event, field) is None and getattr(raw, field) is not None:
                     setattr(event, field, getattr(raw, field))
+                    changed = True
+            if raw.categories:
+                existing = list(event.categories or [])
+                merged = existing + [c for c in raw.categories if c not in existing]
+                if merged != existing:
+                    event.categories = merged
                     changed = True
             if event.status == "removed":
                 event.status = "active"
@@ -90,3 +106,17 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
     db.commit()
 
     return {"inserted": inserted, "updated": updated, "deactivated": deactivated}
+
+
+def _dedupe_by_hash(raw_events: list[RawEvent]) -> list[RawEvent]:
+    seen: dict[str, RawEvent] = {}
+    for raw in raw_events:
+        h = raw.canonical_hash()
+        kept = seen.get(h)
+        if kept is None:
+            seen[h] = raw
+        else:
+            for c in raw.categories:
+                if c not in kept.categories:
+                    kept.categories.append(c)
+    return list(seen.values())

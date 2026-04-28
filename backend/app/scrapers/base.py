@@ -1,5 +1,7 @@
 import hashlib
-from dataclasses import dataclass
+import html
+import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -15,6 +17,7 @@ class RawEvent:
     venue_name: Optional[str] = None
     venue_address: Optional[str] = None
     image_url: Optional[str] = None
+    categories: list[str] = field(default_factory=list)
 
     def canonical_hash(self) -> str:
         key = "|".join([
@@ -23,6 +26,14 @@ class RawEvent:
             (self.venue_name or "").lower().strip(),
         ])
         return hashlib.sha256(key.encode()).hexdigest()
+
+
+def clean_html_text(s: str) -> str:
+    """Unescape HTML entities and strip tags; collapses whitespace to a single line."""
+    s = html.unescape(s)
+    s = re.sub(r"<[^>]+>", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 class BaseSource:
