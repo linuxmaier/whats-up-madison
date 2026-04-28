@@ -29,9 +29,9 @@ These cover many venues and event types from a single source. Highest leverage i
 
 ### Visit Madison
 - URL: https://www.visitmadison.com/events/
-- Scraper type prospect: html or unknown feed
-- Status: **investigating**
-- Notes: Official tourism CVB site. Curated, lower noise than Isthmus. Check for iCal/RSS export.
+- Scraper type: api
+- Status: **integrated**
+- Notes: Official tourism CVB site, curated and lower-noise than Isthmus. Uses the Simpleview DMS events JSON API at `/includes/rest_v2/plugins_events_events_by_date/find/`. Public `apiToken` is hardcoded in the events page HTML and extracted on each run (with a hardcoded fallback in case extraction fails). Paginated at `limit=30` due to a 200 KB server-side response cap; ~460 events in a 30-day window means ~15-16 sequential requests per run, throttled at 0.5 s between pages. Maps Simpleview's category taxonomy to our taxonomy where unambiguous; ambiguous and non-content categories (Annual Events, Arts & Culture, Entertainment & Nightlife, Fairs & Festivals, Free Event, Holiday/Seasonal, Shopping, Virtual Event) are dropped and left for the LLM tagging pass.
 
 ### Eventbrite
 - URL: https://www.eventbrite.com/d/wi--madison/events/
@@ -198,6 +198,7 @@ Multi-tagging is allowed (e.g. a UW author event may be both **Visual Art** and 
 - **Food & Drink** — farmers' markets, food festivals, tastings, brewery/restaurant events
 - **Health & Wellness** — yoga, meditation, group fitness, group walks
 - **Outdoors & Nature** — birding, hikes, conservation work, park events, gardening
+- **Sports & Recreation** — pickup games, recreational leagues, races, fitness meetups, sports-watch parties, organized athletic events
 - **Talks & Learning** — lectures, panels, classes, workshops, book clubs, author readings
 - **Civic & Politics** — government meetings, town halls, candidate forums, advocacy
 - **Family & Kids** — story hours, kid-targeted programming

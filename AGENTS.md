@@ -59,6 +59,8 @@ After writing a scraper, add it to `SCRAPERS` in `backend/app/main.py`. The `POS
 
 `RawEvent.canonical_hash()` generates a deduplication key: `sha256(normalized_title|start_date|venue_name)`. Always set `source_name` and `source_url` on every `RawEvent`.
 
+`RawEvent.categories` is optional. If a source ships its own taxonomy that maps cleanly to ours (`backend/app/categories.py`), populate `categories` per event so we save LLM tagging cost on those events. Map conservatively — drop ambiguous source categories so they fall through to the Step 4 LLM pass instead of mis-tagging. If the source delivers HTML (description, etc.), use `clean_html_text()` from `app.scrapers.base` to strip tags + unescape entities.
+
 ### Source Catalog
 
 `docs/EVENT_SOURCES.md` tracks all known and prospective event sources, their integration status (integrated, planned, investigating, deferred, rejected), and notes on feasibility. **Update that file whenever sourcing changes** — adding a scraper, retiring one, deferring a candidate, or recording a feasibility finding (feed format, signal quality, ToS).
@@ -70,8 +72,10 @@ The closed set of event category tags lives in `backend/app/categories.py` (`CAT
 ### Ingestion (`backend/app/ingest.py`)
 
 All scrapers share `ingest_events(source_name, raw_events, db)`. It handles:
+- **Pre-dedup** — collapses multiple raws sharing a `canonical_hash` from the same run before insert (a source can return e.g. two recurring "Volunteer at Foodbank" series with different IDs but identical title/date/venue); categories are unioned across the duplicates
 - **Upsert** by `canonical_hash` — inserts new events, skips duplicates
-- **Fill-in-nulls** — adds missing fields from later sources; never overwrites set values
+- **Fill-in-nulls** — adds missing scalar fields from later sources; never overwrites set values
+- **Category union** — `RawEvent.categories` are merged into `Event.categories` preserving order, no duplicates; later sources can enrich an earlier one
 - **Multi-source** — one `EventSource` row per (event, source); same event from two scrapers gets two `EventSource` rows, both linked to the same `Event`
 - **Staleness** — after each run, deactivates `EventSource` rows from that scraper not seen in the run; marks `Event.status = 'removed'` when no active sources remain
 - **Re-activation** — if a removed event reappears in a future run, `status` is set back to `'active'`
@@ -146,7 +150,7 @@ Returns per-scraper stats: `{"Isthmus": {"inserted": N, "updated": N, "deactivat
 
 - **Done (Step 1):** repo skeleton, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
 - **Done (Step 2):** multi-source `Event`/`EventSource` data model, `ingest.py`, `POST /admin/scrape` endpoint, React/Vite/Tailwind frontend (date picker + event cards)
-- **In progress (Step 3):** Isthmus scraper integrated (iCal + RSS, 30-day window, ~235 events); APScheduler for daily runs still planned; more sources in `docs/EVENT_SOURCES.md`
+- **In progress (Step 3):** Isthmus integrated (iCal + RSS, 30-day window, ~235 events) and Visit Madison integrated (Simpleview JSON API, 30-day window, ~460 events with category pre-tagging); APScheduler for daily runs still planned; more sources in `docs/EVENT_SOURCES.md`
 - **Planned (Step 4):** LLM-assisted category taxonomy pass, category filtering in frontend
 
 Backend: http://localhost:8000 — API docs: http://localhost:8000/docs
