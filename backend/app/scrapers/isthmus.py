@@ -11,8 +11,6 @@ from app.scrapers.base import BaseSource, RawEvent
 
 _ICAL_URL = "https://isthmus.com/search/event/calendar-of-events/calendar.ics"
 _RSS_BASE = "https://isthmus.com/search/event/calendar-of-events/index.rss"
-_CAL_BASE = "https://isthmus.com/search/event/calendar-of-events/"
-_FALLBACK_URL = "https://isthmus.com/all-events/calendar-of-events-index"
 _CENTRAL = ZoneInfo("America/Chicago")
 _WINDOW_DAYS = 30
 
@@ -24,23 +22,35 @@ class IsthmusSource(BaseSource):
     def fetch(self) -> list[RawEvent]:
         today = date.today()
         end_date = today + timedelta(days=_WINDOW_DAYS)
-        url_map, date_page_map = _build_url_map(today, end_date)
-        return _parse_ical(today, end_date, url_map, date_page_map)
+        url_map, title_date_map = _build_url_map(today, end_date)
+        return _parse_ical(today, end_date, url_map, title_date_map)
 
 
-def _rss_title_to_event_name(title: str) -> str:
-    """Strip the ' - Date @ Venue' suffix from an RSS item title."""
+def _parse_rss_title(title: str) -> tuple[str, str]:
+    """Return (event_name_lower, venue_lower) from an RSS item title.
+
+    RSS format: 'Event Name - Date [time] [@ Venue]'
+    """
     idx = title.find(" - ")
-    if idx != -1:
-        title = title[:idx]
-    return title.lower().strip()
+    if idx == -1:
+        return title.lower().strip(), ""
+    event_name = title[:idx].lower().strip()
+    suffix = title[idx + 3:]
+    at_idx = suffix.rfind(" @ ")
+    venue = suffix[at_idx + 3:].lower().strip() if at_idx != -1 else ""
+    return event_name, venue
 
 
 def _build_url_map(
     start: date, end: date
-) -> tuple[dict[tuple[str, str], str], dict[str, int]]:
-    url_map: dict[tuple[str, str], str] = {}
-    date_page_map: dict[str, int] = {}
+) -> tuple[dict[tuple[str, str, str], str], dict[tuple[str, str], str]]:
+    """Paginate the RSS feed and return two lookup maps.
+
+    url_map:        (title, date, venue) → url  (venue-precise)
+    title_date_map: (title, date)        → url  (first match per title+date)
+    """
+    url_map: dict[tuple[str, str, str], str] = {}
+    title_date_map: dict[tuple[str, str], str] = {}
     page = 1
     while True:
         resp = httpx.get(_RSS_BASE, params={"page": page}, timeout=30)
@@ -64,15 +74,16 @@ def _build_url_map(
                 all_beyond_window = False
             if start <= event_date <= end:
                 date_str = event_date.isoformat()
-                date_page_map.setdefault(date_str, page)
-                key = (_rss_title_to_event_name(title_raw), date_str)
-                url_map[key] = link
+                event_name, venue = _parse_rss_title(title_raw)
+                if venue:
+                    url_map[(event_name, date_str, venue)] = link
+                title_date_map.setdefault((event_name, date_str), link)
 
         if all_beyond_window:
             break
         page += 1
 
-    return url_map, date_page_map
+    return url_map, title_date_map
 
 
 def _to_aware_datetime(dt: date | datetime) -> datetime:
@@ -82,7 +93,10 @@ def _to_aware_datetime(dt: date | datetime) -> datetime:
 
 
 def _parse_ical(
-    start: date, end: date, url_map: dict, date_page_map: dict
+    start: date,
+    end: date,
+    url_map: dict[tuple[str, str, str], str],
+    title_date_map: dict[tuple[str, str], str],
 ) -> list[RawEvent]:
     resp = httpx.get(_ICAL_URL, timeout=30)
     resp.raise_for_status()
@@ -98,16 +112,22 @@ def _parse_ical(
         dtend = comp.get("DTEND")
         end_at = _to_aware_datetime(dtend.dt) if dtend else None
 
-        local_date = start_at.astimezone(_CENTRAL).date().isoformat()
-        page = date_page_map.get(local_date)
-        fallback = f"{_CAL_BASE}?page={page}" if page else _FALLBACK_URL
-        source_url = url_map.get((title.lower().strip(), local_date), fallback)
-
         raw_location = comp.get("LOCATION")
         venue_name = str(raw_location).strip() or None if raw_location else None
 
         raw_desc = comp.get("DESCRIPTION")
         description = str(raw_desc).strip() or None if raw_desc else None
+
+        local_date = start_at.astimezone(_CENTRAL).date().isoformat()
+        title_lower = title.lower().strip()
+        venue_lower = (venue_name or "").lower().strip()
+
+        source_url = (
+            url_map.get((title_lower, local_date, venue_lower))
+            or title_date_map.get((title_lower, local_date))
+        )
+        if not source_url:
+            continue
 
         events.append(RawEvent(
             title=title,

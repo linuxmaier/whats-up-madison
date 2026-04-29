@@ -24,7 +24,7 @@ def get_events(
     )
     if date:
         query = query.filter(
-            func.date(Event.start_at) <= date,
-            func.date(func.coalesce(Event.end_at, Event.start_at)) >= date,
+            func.date(func.timezone("America/Chicago", Event.start_at)) <= date,
+            func.date(func.timezone("America/Chicago", func.coalesce(Event.end_at, Event.start_at))) >= date,
         )
     return query.order_by(Event.start_at).all()
