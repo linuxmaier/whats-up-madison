@@ -4,6 +4,7 @@ import DensityRail from './components/DensityRail'
 import AllDayStrip from './components/AllDayStrip'
 import BucketSection from './components/BucketSection'
 import CategoryFilter from './components/CategoryFilter'
+import VenueFilter from './components/VenueFilter'
 import { partitionEvents } from './lib/eventTime'
 import {
   filterEvents,
@@ -36,10 +37,12 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState(loadFilterState)
+  const [hiddenVenues, setHiddenVenues] = useState(new Set())
 
   useEffect(() => {
     setLoading(true)
     setError(null)
+    setHiddenVenues(new Set())
     fetch(`/events?date=${selectedDate}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -54,10 +57,18 @@ export default function App() {
     saveFilterState(filter)
   }, [filter])
 
-  const filteredEvents = useMemo(
-    () => filterEvents(events, filter),
-    [events, filter],
-  )
+  const allVenues = useMemo(() => {
+    const names = events.map((e) => e.venue_name).filter(Boolean)
+    return [...new Set(names)].sort()
+  }, [events])
+
+  const filteredEvents = useMemo(() => {
+    let result = filterEvents(events, filter)
+    if (hiddenVenues.size > 0) {
+      result = result.filter((e) => !!e.venue_name && !hiddenVenues.has(e.venue_name))
+    }
+    return result
+  }, [events, filter, hiddenVenues])
 
   const partition = useMemo(
     () => partitionEvents(filteredEvents, selectedDate),
@@ -79,6 +90,11 @@ export default function App() {
               selected={filter.selected}
               includeUncategorized={filter.includeUncategorized}
               onChange={setFilter}
+            />
+            <VenueFilter
+              allVenues={allVenues}
+              hiddenVenues={hiddenVenues}
+              onChange={setHiddenVenues}
             />
             <DatePicker value={selectedDate} onChange={setSelectedDate} />
           </div>
