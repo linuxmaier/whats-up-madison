@@ -123,6 +123,10 @@ Loaded from `backend/.env` (gitignored). See `backend/.env.example` for required
 
 React + Vite + Tailwind CSS. Node deps are project-local (not in conda).
 
+### Card types
+
+There are two card components: `EventCard` (`frontend/src/components/EventCard.jsx`) for timed events and `AllDayCard` (inside `frontend/src/components/AllDayStrip.jsx`) for all-day / time-varies events. They have different visual weights but share most interaction patterns. When making a UI or behavior change to one, consider whether it applies to the other. It won't always be appropriate to treat them identically, but check both before deciding.
+
 ```
 cd frontend
 npm install      # first time or after package.json changes
