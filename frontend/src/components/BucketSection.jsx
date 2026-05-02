@@ -8,6 +8,12 @@ const TINTS = {
   night: 'bg-slate-100 border-slate-300 text-slate-800',
 }
 
+function formatHour(h) {
+  if (h === 0) return '12 AM'
+  if (h === 12) return '12 PM'
+  return h < 12 ? `${h} AM` : `${h - 12} PM`
+}
+
 export default function BucketSection({ id, label, events }) {
   if (!events || events.length === 0) return null
 
@@ -32,7 +38,14 @@ export default function BucketSection({ id, label, events }) {
         </span>
       </h2>
       {hourGroups.map(({ hour, events: hEvents }, i) => (
-        <div key={hour} className={i > 0 ? 'mt-4 border-t border-gray-200' : ''}>
+        <div key={hour}>
+          {i > 0 && (
+            <div className="flex items-center gap-3 mt-4 mb-1">
+              <div className="flex-1 border-t border-gray-200" />
+              <span className="text-xs text-gray-400">{formatHour(hour)}</span>
+              <div className="flex-1 border-t border-gray-200" />
+            </div>
+          )}
           <div id={`hour-${hour}`} className="scroll-mt-40" />
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
             {hEvents.map((event) => (
