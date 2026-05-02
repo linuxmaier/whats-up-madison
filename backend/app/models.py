@@ -18,6 +18,7 @@ class Event(Base):
     venue_address = Column(String)
     categories = Column(ARRAY(String), default=[])
     image_url = Column(String)
+    all_day = Column(Boolean, nullable=False, server_default="false")
     canonical_hash = Column(String, unique=True, nullable=False)
     status = Column(String, nullable=False, server_default="active")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

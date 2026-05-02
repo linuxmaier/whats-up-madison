@@ -36,6 +36,7 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
                 venue_address=raw.venue_address,
                 image_url=raw.image_url,
                 categories=list(raw.categories),
+                all_day=raw.all_day,
                 canonical_hash=hash_,
                 status="active",
             )
@@ -56,6 +57,12 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
                     changed = True
             if event.status == "removed":
                 event.status = "active"
+                changed = True
+            # If an all-day placeholder is superseded by a raw with a real time, upgrade it.
+            if event.all_day and not raw.all_day:
+                event.all_day = False
+                event.start_at = raw.start_at
+                event.end_at = raw.end_at
                 changed = True
             if changed:
                 updated += 1

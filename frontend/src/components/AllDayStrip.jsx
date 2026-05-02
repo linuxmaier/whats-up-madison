@@ -4,7 +4,7 @@ export default function AllDayStrip({ events }) {
   return (
     <section id="allday" className="scroll-mt-32 mt-4">
       <h2 className="sticky top-32 z-10 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between">
-        <span>All Day</span>
+        <span>All Day / Time Varies</span>
         <span className="text-xs font-normal opacity-70">
           {events.length} event{events.length === 1 ? '' : 's'}
         </span>
@@ -27,6 +27,9 @@ function AllDayCard({ event }) {
       </h3>
       {event.venue_name && (
         <p className="text-xs text-gray-500 mt-1 truncate">{event.venue_name}</p>
+      )}
+      {event.all_day && event.description && (
+        <p className="text-xs text-gray-400 mt-1 line-clamp-1">{event.description}</p>
       )}
     </>
   )
