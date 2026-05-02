@@ -1,4 +1,5 @@
 import EventCard from './EventCard'
+import { localHour } from '../lib/eventTime'
 
 const TINTS = {
   morning: 'bg-amber-50 border-amber-200 text-amber-900',
@@ -7,10 +8,24 @@ const TINTS = {
   night: 'bg-slate-100 border-slate-300 text-slate-800',
 }
 
+function formatHour(h) {
+  if (h === 0) return '12 AM'
+  if (h === 12) return '12 PM'
+  return h < 12 ? `${h} AM` : `${h - 12} PM`
+}
+
 export default function BucketSection({ id, label, events }) {
   if (!events || events.length === 0) return null
 
   const tint = TINTS[id] ?? 'bg-gray-100 border-gray-200 text-gray-800'
+
+  const hourGroups = []
+  for (const event of events) {
+    const h = localHour(event.start_at)
+    const last = hourGroups[hourGroups.length - 1]
+    if (last && last.hour === h) last.events.push(event)
+    else hourGroups.push({ hour: h, events: [event] })
+  }
 
   return (
     <section id={id} className="scroll-mt-32 mt-6 first:mt-2">
@@ -22,11 +37,23 @@ export default function BucketSection({ id, label, events }) {
           {events.length} event{events.length === 1 ? '' : 's'}
         </span>
       </h2>
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
-        {events.map((event) => (
-          <EventCard key={event.id} event={event} />
-        ))}
-      </div>
+      {hourGroups.map(({ hour, events: hEvents }, i) => (
+        <div key={hour}>
+          {i > 0 && (
+            <div className="flex items-center gap-3 mt-4 mb-1">
+              <div className="flex-1 border-t border-gray-200" />
+              <span className="text-xs text-gray-400">{formatHour(hour)}</span>
+              <div className="flex-1 border-t border-gray-200" />
+            </div>
+          )}
+          <div id={`hour-${hour}`} className="scroll-mt-40" />
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
+            {hEvents.map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   )
 }

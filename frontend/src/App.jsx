@@ -76,7 +76,7 @@ export default function App() {
   )
 
   const handleJumpToHour = (hour) => {
-    const el = document.getElementById(bucketForHour(hour))
+    const el = document.getElementById(`hour-${hour}`) ?? document.getElementById(bucketForHour(hour))
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
