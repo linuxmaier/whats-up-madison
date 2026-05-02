@@ -1,3 +1,5 @@
+import { forwardRef } from 'react'
+
 const HOUR_TICKS = [
   { hour: 5, label: '5a' },
   { hour: 8, label: '8a' },
@@ -10,13 +12,13 @@ const HOUR_TICKS = [
 
 const ORDER = [...Array(19).keys()].map((i) => i + 5).concat([0, 1, 2, 3, 4])
 
-export default function DensityRail({ hourCounts, onJumpToHour }) {
+const DensityRail = forwardRef(function DensityRail({ hourCounts, onJumpToHour, stickyTop }, ref) {
   const max = Math.max(1, ...hourCounts)
   const total = hourCounts.reduce((a, b) => a + b, 0)
   if (total === 0) return null
 
   return (
-    <div className="sticky top-12 z-20 bg-gray-50/90 backdrop-blur border-b border-gray-200 -mx-4 px-4 py-2">
+    <div ref={ref} style={{ top: stickyTop }} className="sticky z-20 bg-gray-50 backdrop-blur border-b border-gray-200 -mx-4 px-4 py-2">
       <div className="relative flex gap-px h-12">
         {ORDER.map((h) => {
           const count = hourCounts[h]
@@ -63,7 +65,9 @@ export default function DensityRail({ hourCounts, onJumpToHour }) {
       </div>
     </div>
   )
-}
+})
+
+export default DensityRail
 
 function formatHourLabel(h) {
   if (h === 0) return '12a'

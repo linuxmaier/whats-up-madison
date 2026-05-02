@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import DatePicker from './components/DatePicker'
 import DensityRail from './components/DensityRail'
 import AllDayStrip from './components/AllDayStrip'
@@ -38,6 +38,28 @@ export default function App() {
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState(loadFilterState)
   const [hiddenVenues, setHiddenVenues] = useState(new Set())
+
+  const headerRef = useRef(null)
+  const [railEl, setRailEl] = useState(null)
+  const [headerH, setHeaderH] = useState(0)
+  const [railH, setRailH] = useState(0)
+
+  useLayoutEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    setHeaderH(el.offsetHeight)
+    const ro = new ResizeObserver(() => setHeaderH(el.offsetHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!railEl) { setRailH(0); return }
+    setRailH(railEl.offsetHeight)
+    const ro = new ResizeObserver(() => setRailH(railEl.offsetHeight))
+    ro.observe(railEl)
+    return () => ro.disconnect()
+  }, [railEl])
 
   useEffect(() => {
     setLoading(true)
@@ -82,8 +104,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
+      <div ref={headerRef} className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3">
           <h1 className="text-lg font-bold text-gray-900">What's Up Madison</h1>
           <div className="flex items-center gap-2">
             <CategoryFilter
@@ -122,6 +144,8 @@ export default function App() {
                 )}
               </p>
               <DensityRail
+                ref={setRailEl}
+                stickyTop={headerH}
                 hourCounts={partition.hourCounts}
                 onJumpToHour={handleJumpToHour}
               />
@@ -132,6 +156,7 @@ export default function App() {
                   id={b.id}
                   label={b.label}
                   events={partition[b.id]}
+                  stickyTop={headerH + railH}
                 />
               ))}
             </>

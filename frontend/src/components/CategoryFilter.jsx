@@ -68,12 +68,22 @@ export default function CategoryFilter({
         className={`px-2 py-1 text-sm rounded border transition-colors flex items-center gap-1 ${
           showBadge
             ? 'border-blue-500 text-blue-700 bg-blue-50 hover:bg-blue-100'
-            : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+            : 'border-gray-400 bg-white text-gray-800 font-medium hover:bg-gray-50'
         }`}
         aria-expanded={open}
         aria-haspopup="dialog"
       >
-        <span>Filter</span>
+        <svg
+          className="w-3.5 h-3.5 flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 8h10M11 12h2M11 16h2" />
+        </svg>
+        <span>Categories</span>
         {showBadge && (
           <span className="text-[10px] px-1 py-0.5 rounded-full bg-blue-600 text-white leading-none">
             {hiddenCount} hidden
@@ -85,7 +95,7 @@ export default function CategoryFilter({
         <div
           role="dialog"
           aria-label="Filter by category"
-          className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-40"
+          className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-80 sm:w-96 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-40"
         >
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
