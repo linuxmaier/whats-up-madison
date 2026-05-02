@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Event, EventSource
 from app.scrapers.base import RawEvent
+
+logger = logging.getLogger(__name__)
 
 _FILLABLE_FIELDS = ("description", "end_at", "venue_name", "venue_address", "image_url")
 FUZZY_TITLE_THRESHOLD = 0.65
@@ -126,7 +129,9 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
 
     db.commit()
 
-    return {"inserted": inserted, "updated": updated, "deactivated": deactivated}
+    stats = {"inserted": inserted, "updated": updated, "deactivated": deactivated}
+    logger.info("%s ingest: %s", source_name, stats)
+    return stats
 
 
 def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
@@ -162,7 +167,12 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
         if ratio > best_ratio:
             best_ratio, best = ratio, event
 
-    return best if best_ratio >= FUZZY_TITLE_THRESHOLD else None
+    if best_ratio >= FUZZY_TITLE_THRESHOLD:
+        logger.debug(
+            "Fuzzy match (%.2f): '%s' → '%s'", best_ratio, raw.title, best.title
+        )
+        return best
+    return None
 
 
 def _dedupe_by_hash(raw_events: list[RawEvent]) -> list[RawEvent]:

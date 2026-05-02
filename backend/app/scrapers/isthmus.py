@@ -1,3 +1,5 @@
+import logging
+import time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
@@ -5,14 +7,34 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import recurring_ical_events
+from bs4 import BeautifulSoup
 from icalendar import Calendar
 
-from app.scrapers.base import BaseSource, RawEvent
+from app.scrapers.base import BaseSource, RawEvent, clean_html_text
+
+logger = logging.getLogger(__name__)
 
 _ICAL_URL = "https://isthmus.com/search/event/calendar-of-events/calendar.ics"
 _RSS_BASE = "https://isthmus.com/search/event/calendar-of-events/index.rss"
 _CENTRAL = ZoneInfo("America/Chicago")
 _WINDOW_DAYS = 30
+_DESC_MIN_LEN = 80
+_FETCH_DELAY = 0.5  # seconds between detail-page fetches
+
+
+def _fetch_full_description(url: str) -> str | None:
+    try:
+        resp = httpx.get(url, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.content, "lxml")
+        content = soup.find(id="content")
+        if not content:
+            logger.warning("No id='content' element at %s", url)
+            return None
+        return clean_html_text(content.get_text()) or None
+    except Exception as exc:
+        logger.warning("Failed to fetch description from %s: %s", url, exc)
+        return None
 
 
 class IsthmusSource(BaseSource):
@@ -106,6 +128,7 @@ def _parse_ical(
     cal = Calendar.from_ical(resp.content)
 
     events = []
+    short_count = enriched_count = failed_count = 0
     for comp in recurring_ical_events.of(cal).between(start, end):
         title = str(comp.get("SUMMARY", "")).strip()
         if not title:
@@ -132,6 +155,16 @@ def _parse_ical(
         if not source_url:
             continue
 
+        if len(description or "") < _DESC_MIN_LEN:
+            short_count += 1
+            enriched = _fetch_full_description(source_url)
+            if enriched:
+                description = enriched
+                enriched_count += 1
+            else:
+                failed_count += 1
+            time.sleep(_FETCH_DELAY)
+
         events.append(RawEvent(
             title=title,
             start_at=start_at,
@@ -142,4 +175,9 @@ def _parse_ical(
             source_url=source_url,
         ))
 
+    if short_count:
+        logger.info(
+            "Description enrichment: %d/%d fetched successfully, %d failed",
+            enriched_count, short_count, failed_count,
+        )
     return events
