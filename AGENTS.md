@@ -1,5 +1,7 @@
 # Agent Instructions — What's Up Madison
 
+> **CLAUDE.md is a symlink to this file.** Always edit `AGENTS.md` directly — never edit `CLAUDE.md`.
+
 ## Project Overview
 
 Self-populating Madison WI events aggregator. Backend scrapes known sources daily and stores normalized events in PostgreSQL. Frontend shows a date-picker + event card list with click-through to original sources.
@@ -73,7 +75,8 @@ The closed set of event category tags lives in `backend/app/categories.py` (`CAT
 
 All scrapers share `ingest_events(source_name, raw_events, db)`. It handles:
 - **Pre-dedup** — collapses multiple raws sharing a `canonical_hash` from the same run before insert (a source can return e.g. two recurring "Volunteer at Foodbank" series with different IDs but identical title/date/venue); categories are unioned across the duplicates
-- **Upsert** by `canonical_hash` — inserts new events, skips duplicates
+- **Upsert** by `canonical_hash` — inserts new events, skips exact duplicates
+- **Fuzzy dedup** — after an exact hash miss, a secondary search matches candidates by time+venue and scores title similarity via `difflib.SequenceMatcher`; events scoring ≥ `FUZZY_TITLE_THRESHOLD` (0.65) are treated as duplicates and merged rather than inserted as new rows; this catches near-identical events listed under slightly different titles by different sources
 - **Fill-in-nulls** — adds missing scalar fields from later sources; never overwrites set values
 - **Category union** — `RawEvent.categories` are merged into `Event.categories` preserving order, no duplicates; later sources can enrich an earlier one
 - **Multi-source** — one `EventSource` row per (event, source); same event from two scrapers gets two `EventSource` rows, both linked to the same `Event`
@@ -122,6 +125,10 @@ Loaded from `backend/.env` (gitignored). See `backend/.env.example` for required
 ## Frontend
 
 React + Vite + Tailwind CSS. Node deps are project-local (not in conda).
+
+### Source priority
+
+`frontend/src/lib/sources.js` exports `sortedSources(sources)`, which sorts a `sources` array by `SOURCE_PRIORITY` (currently `['Isthmus', 'Visit Madison']`). Both card components use this to determine the title link (first source wins) and footer display order. When adding a new scraper, add it to `SOURCE_PRIORITY` at the appropriate trust rank; sources not in the list sort to the end.
 
 ### Card types
 
