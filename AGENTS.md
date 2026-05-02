@@ -67,7 +67,7 @@ After writing a scraper, add it to `SCRAPERS` in `backend/app/main.py`. The `POS
 
 ### Category Taxonomy
 
-The closed set of event category tags lives in `backend/app/categories.py` (`CATEGORIES`, `CATEGORY_DESCRIPTIONS`). The same list is mirrored with descriptions in `docs/EVENT_SOURCES.md` under "Category Taxonomy". The LLM tagging pass (Step 4) imports from the module to constrain its output. When changing the taxonomy, update both the module and the doc together — they should always agree.
+The closed set of event category tags lives in `backend/app/categories.py` (`CATEGORIES`, `CATEGORY_DESCRIPTIONS`). The same list is mirrored with descriptions in `docs/EVENT_SOURCES.md` under "Category Taxonomy", and the bare list (plus the default-excluded set used by the frontend filter) is mirrored in `frontend/src/lib/categories.js`. The LLM tagging pass (Step 4) imports from the module to constrain its output. When changing the taxonomy, update the Python module, the doc, and the frontend mirror together — they should always agree.
 
 ### Ingestion (`backend/app/ingest.py`)
 
@@ -151,7 +151,7 @@ Returns per-scraper stats: `{"Isthmus": {"inserted": N, "updated": N, "deactivat
 - **Done (Step 1):** repo skeleton, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
 - **Done (Step 2):** multi-source `Event`/`EventSource` data model, `ingest.py`, `POST /admin/scrape` endpoint, React/Vite/Tailwind frontend (date picker + event cards)
 - **In progress (Step 3):** Isthmus integrated (iCal + RSS, 30-day window, ~235 events) and Visit Madison integrated (Simpleview JSON API, 30-day window, ~460 events with category pre-tagging); APScheduler for daily runs still planned; more sources in `docs/EVENT_SOURCES.md`
-- **Planned (Step 4):** LLM-assisted category taxonomy pass, category filtering in frontend
+- **In progress (Step 4):** category filter UI in frontend (multi-select tag cloud, default excludes Volunteer & Causes / Civic & Politics / Community & Clubs, persists to localStorage); LLM-assisted category tagging pass still planned (tracked in GH issue #6)
 
 Backend: http://localhost:8000 — API docs: http://localhost:8000/docs
 Frontend: http://localhost:5173

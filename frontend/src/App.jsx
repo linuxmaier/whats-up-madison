@@ -3,7 +3,13 @@ import DatePicker from './components/DatePicker'
 import DensityRail from './components/DensityRail'
 import AllDayStrip from './components/AllDayStrip'
 import BucketSection from './components/BucketSection'
+import CategoryFilter from './components/CategoryFilter'
 import { partitionEvents } from './lib/eventTime'
+import {
+  filterEvents,
+  loadFilterState,
+  saveFilterState,
+} from './lib/categories'
 
 function toLocalDateString(date) {
   return date.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
@@ -29,6 +35,7 @@ export default function App() {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [filter, setFilter] = useState(loadFilterState)
 
   useEffect(() => {
     setLoading(true)
@@ -43,9 +50,18 @@ export default function App() {
       .finally(() => setLoading(false))
   }, [selectedDate])
 
+  useEffect(() => {
+    saveFilterState(filter)
+  }, [filter])
+
+  const filteredEvents = useMemo(
+    () => filterEvents(events, filter),
+    [events, filter],
+  )
+
   const partition = useMemo(
-    () => partitionEvents(events, selectedDate),
-    [events, selectedDate],
+    () => partitionEvents(filteredEvents, selectedDate),
+    [filteredEvents, selectedDate],
   )
 
   const handleJumpToHour = (hour) => {
@@ -58,7 +74,14 @@ export default function App() {
       <div className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
           <h1 className="text-lg font-bold text-gray-900">What's Up Madison</h1>
-          <DatePicker value={selectedDate} onChange={setSelectedDate} />
+          <div className="flex items-center gap-2">
+            <CategoryFilter
+              selected={filter.selected}
+              includeUncategorized={filter.includeUncategorized}
+              onChange={setFilter}
+            />
+            <DatePicker value={selectedDate} onChange={setSelectedDate} />
+          </div>
         </div>
       </div>
 
@@ -69,10 +92,18 @@ export default function App() {
           {!loading && !error && events.length === 0 && (
             <p className="text-gray-400 text-sm">No events found for this date.</p>
           )}
-          {!loading && !error && events.length > 0 && (
+          {!loading && !error && events.length > 0 && filteredEvents.length === 0 && (
+            <p className="text-gray-400 text-sm">
+              All {events.length} events for this date are hidden by your filter.
+            </p>
+          )}
+          {!loading && !error && filteredEvents.length > 0 && (
             <>
               <p className="text-gray-500 text-xs mb-2">
-                {events.length} event{events.length !== 1 ? 's' : ''}
+                {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
+                {filteredEvents.length !== events.length && (
+                  <span className="text-gray-400"> of {events.length}</span>
+                )}
               </p>
               <DensityRail
                 hourCounts={partition.hourCounts}
