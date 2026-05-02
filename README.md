@@ -97,7 +97,7 @@ whats-up-madison/
 - **Step 1 — Skeleton** ✅ Repo structure, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
 - **Step 2 — First scraper + frontend** ✅ Multi-source data model (`Event`/`EventSource`), ingestion utility, React/Vite/Tailwind frontend with date picker and event cards
 - **Step 3 — More scrapers** 🔄 Isthmus integrated (iCal + RSS, 30-day window) and Visit Madison integrated (Simpleview JSON API, 30-day window, with category pre-tagging from the source's own taxonomy); Eventbrite API, City of Madison, individual venue HTML scrapers, APScheduler for daily runs still planned
-- **Step 4 — Categories** LLM analysis of accumulated events to propose a category taxonomy; category filtering added to the frontend
+- **Step 4 — Categories** 🔄 Closed taxonomy in `backend/app/categories.py` (15 tags); Visit Madison events pre-tagged from the source taxonomy; frontend filter UI shipped (multi-select tag cloud, sensible defaults, localStorage); LLM-assisted tagging pass still planned to fill in Isthmus + future sources
 
 ## Adding a Scraper
 
