@@ -11,3 +11,4 @@ recurring_ical_events>=3.0
 beautifulsoup4>=4.12
 lxml>=5.3
 apscheduler>=3.10
+anthropic>=0.40
