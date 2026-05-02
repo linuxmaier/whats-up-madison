@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 export default function AllDayStrip({ events }) {
   if (!events || events.length === 0) return null
 
@@ -19,17 +21,36 @@ export default function AllDayStrip({ events }) {
 }
 
 function AllDayCard({ event }) {
+  const [expanded, setExpanded] = useState(false)
   const primary = event.sources?.[0]
-  const Inner = (
-    <>
-      <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
-        {event.title}
-      </h3>
+
+  return (
+    <div
+      className="bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm cursor-pointer hover:border-emerald-300 hover:shadow transition select-none"
+      onClick={() => setExpanded(e => !e)}
+    >
+      {primary?.source_url ? (
+        <a
+          href={primary.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm font-semibold text-gray-900 leading-snug hover:underline line-clamp-2 block"
+          onClick={e => e.stopPropagation()}
+        >
+          {event.title}
+        </a>
+      ) : (
+        <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
+          {event.title}
+        </h3>
+      )}
       {event.venue_name && (
         <p className="text-xs text-gray-500 mt-1 truncate">{event.venue_name}</p>
       )}
-      {event.all_day && event.description && (
-        <p className="text-xs text-gray-400 mt-1 line-clamp-1">{event.description}</p>
+      {event.description && (
+        <p className={`text-xs text-gray-400 mt-1 whitespace-pre-line ${expanded ? '' : 'line-clamp-1'}`}>
+          {event.description}
+        </p>
       )}
       {event.categories?.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
@@ -43,23 +64,9 @@ function AllDayCard({ event }) {
           ))}
         </div>
       )}
-    </>
-  )
-  if (primary?.source_url) {
-    return (
-      <a
-        href={primary.source_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm hover:border-emerald-300 hover:shadow transition"
-      >
-        {Inner}
-      </a>
-    )
-  }
-  return (
-    <div className="bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm">
-      {Inner}
+      <div className="mt-1 flex justify-end">
+        <span className="text-[10px] text-gray-300">{expanded ? '▲' : '▼'}</span>
+      </div>
     </div>
   )
 }

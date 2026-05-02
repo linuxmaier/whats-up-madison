@@ -30,11 +30,17 @@ class RawEvent:
 
 
 def clean_html_text(s: str) -> str:
-    """Unescape HTML entities and strip tags; collapses whitespace to a single line."""
+    """Unescape HTML entities, strip tags, and preserve paragraph structure."""
     s = html.unescape(s)
+    # Block-level closers become paragraph breaks; <br> becomes a line break
+    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.IGNORECASE)
+    s = re.sub(r"</(p|div|h[1-6]|li|section|article)>", "\n\n", s, flags=re.IGNORECASE)
     s = re.sub(r"<[^>]+>", "", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
+    # Collapse horizontal whitespace (but not newlines)
+    s = re.sub(r"[^\S\n]+", " ", s)
+    # At most one blank line between paragraphs
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
 
 
 class BaseSource:
