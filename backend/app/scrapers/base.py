@@ -18,6 +18,7 @@ class RawEvent:
     venue_address: Optional[str] = None
     image_url: Optional[str] = None
     categories: list[str] = field(default_factory=list)
+    all_day: bool = False
 
     def canonical_hash(self) -> str:
         key = "|".join([

@@ -48,6 +48,7 @@ function isLocalMidnight(iso) {
 }
 
 export function isAllDay(event, requestedDate) {
+  if (event.all_day) return true
   if (!event.start_at) return false
 
   // Multi-day event that fully spans the requested day (started before, ends after).

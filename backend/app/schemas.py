@@ -22,6 +22,7 @@ class EventResponse(BaseModel):
     venue_address: Optional[str] = None
     categories: list[str] = []
     image_url: Optional[str] = None
+    all_day: bool = False
     status: str
     sources: list[SourceRef] = []
 
