@@ -31,6 +31,18 @@ function AllDayCard({ event }) {
       {event.all_day && event.description && (
         <p className="text-xs text-gray-400 mt-1 line-clamp-1">{event.description}</p>
       )}
+      {event.categories?.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {event.categories.map((c) => (
+            <span
+              key={c}
+              className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600"
+            >
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
     </>
   )
   if (primary?.source_url) {
