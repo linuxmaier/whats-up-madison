@@ -77,7 +77,7 @@ export default function VenueFilter({ allVenues, hiddenVenues, onChange }) {
         <div
           role="dialog"
           aria-label="Filter by venue"
-          className="absolute right-0 mt-2 w-72 sm:w-80 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-40"
+          className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-72 sm:w-80 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-40"
         >
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">

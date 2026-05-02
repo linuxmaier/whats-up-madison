@@ -14,7 +14,7 @@ function formatHour(h) {
   return h < 12 ? `${h} AM` : `${h - 12} PM`
 }
 
-export default function BucketSection({ id, label, events }) {
+export default function BucketSection({ id, label, events, stickyTop }) {
   if (!events || events.length === 0) return null
 
   const tint = TINTS[id] ?? 'bg-gray-100 border-gray-200 text-gray-800'
@@ -28,9 +28,10 @@ export default function BucketSection({ id, label, events }) {
   }
 
   return (
-    <section id={id} className="scroll-mt-32 mt-6 first:mt-2">
+    <section id={id} style={{ scrollMarginTop: stickyTop }} className="mt-6 first:mt-2">
       <h2
-        className={`sticky top-32 z-10 ${tint} border rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between`}
+        style={{ top: stickyTop }}
+        className={`sticky z-10 ${tint} border rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between`}
       >
         <span>{label}</span>
         <span className="text-xs font-normal opacity-70">
