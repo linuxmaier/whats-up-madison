@@ -31,8 +31,8 @@ export default function BucketSection({ id, label, events }) {
           {events.length} event{events.length === 1 ? '' : 's'}
         </span>
       </h2>
-      {hourGroups.map(({ hour, events: hEvents }) => (
-        <div key={hour}>
+      {hourGroups.map(({ hour, events: hEvents }, i) => (
+        <div key={hour} className={i > 0 ? 'mt-4 border-t border-gray-200' : ''}>
           <div id={`hour-${hour}`} className="scroll-mt-40" />
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
             {hEvents.map((event) => (
