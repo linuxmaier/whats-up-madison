@@ -13,7 +13,7 @@ export default function AllDayStrip({ events }) {
           {events.length} event{events.length === 1 ? '' : 's'}
         </span>
       </h2>
-      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 items-start">
         {events.map((event) => (
           <AllDayCard key={event.id} event={event} />
         ))}
@@ -157,6 +157,22 @@ function AllDayCard({ event }) {
             >
               {c}
             </span>
+          ))}
+        </div>
+      )}
+      {event.sources && event.sources.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {event.sources.map((s) => (
+            <a
+              key={s.source_name}
+              href={s.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline"
+              onClick={e => e.stopPropagation()}
+            >
+              {s.source_name} ↗
+            </a>
           ))}
         </div>
       )}
