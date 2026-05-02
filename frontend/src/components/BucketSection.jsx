@@ -22,7 +22,7 @@ export default function BucketSection({ id, label, events }) {
           {events.length} event{events.length === 1 ? '' : 's'}
         </span>
       </h2>
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
         {events.map((event) => (
           <EventCard key={event.id} event={event} />
         ))}
