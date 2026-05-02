@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { CalendarDays, Send, Check, X } from 'lucide-react'
 import { formatTimeRange } from '../lib/eventTime'
 import { googleCalendarUrl, downloadIcal, shareCalendarInvite, formatEventText } from '../lib/calendarUtils'
+import { sortedSources } from '../lib/sources'
 
 export default function EventCard({ event }) {
   const [modalOpen, setModalOpen] = useState(false)
@@ -11,7 +12,8 @@ export default function EventCard({ event }) {
   const [showCheck, setShowCheck] = useState(false)
   const calRef = useRef(null)
   const sendRef = useRef(null)
-  const primaryUrl = event.sources?.[0]?.source_url
+  const sources = sortedSources(event.sources)
+  const primaryUrl = sources[0]?.source_url
 
   useEffect(() => {
     if (!calOpen) return
@@ -153,9 +155,9 @@ export default function EventCard({ event }) {
             ))}
           </div>
         )}
-        {event.sources && event.sources.length > 0 && (
+        {sources.length > 0 && (
           <div className="mt-auto pt-2 flex flex-wrap gap-2">
-            {event.sources.map((s) => (
+            {sources.map((s) => (
               <a
                 key={s.source_name}
                 href={s.source_url}
@@ -278,9 +280,9 @@ export default function EventCard({ event }) {
                   ))}
                 </div>
               )}
-              {event.sources && event.sources.length > 0 && (
+              {sources.length > 0 && (
                 <div className="pt-2 flex flex-wrap gap-2 border-t border-gray-100 mt-1">
-                  {event.sources.map((s) => (
+                  {sources.map((s) => (
                     <a
                       key={s.source_name}
                       href={s.source_url}

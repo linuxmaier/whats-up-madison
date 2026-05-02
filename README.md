@@ -105,7 +105,7 @@ whats-up-madison/
 2. Subclass `BaseSource` and implement `fetch() -> list[RawEvent]`
 3. Add an instance to `SCRAPERS` in `backend/app/main.py`
 
-Each `RawEvent` has a `canonical_hash()` method that generates a deduplication key from the normalized title, start date, and venue name. The shared `ingest_events()` function handles upserts, multi-source linking, category merging, and event status tracking automatically.
+Each `RawEvent` has a `canonical_hash()` method that generates a deduplication key from the normalized title, start date, and venue name. After an exact hash miss, `ingest_events()` also runs a fuzzy title-similarity check (anchored by time and venue) to catch near-duplicate events listed under slightly different names by different sources. The shared `ingest_events()` function handles upserts, multi-source linking, category merging, and event status tracking automatically.
 
 If the source has its own category taxonomy that maps cleanly to ours (`backend/app/categories.py`), populate `RawEvent.categories` per event to save LLM cost in the Step 4 tagging pass. Map conservatively — drop ambiguous source categories rather than mis-tagging.
 

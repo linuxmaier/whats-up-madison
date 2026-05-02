@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { CalendarDays, Send, Check, X } from 'lucide-react'
 import { googleCalendarUrl, downloadIcal, shareCalendarInvite, formatEventText } from '../lib/calendarUtils'
+import { sortedSources } from '../lib/sources'
 
 export default function AllDayStrip({ events }) {
   if (!events || events.length === 0) return null
@@ -30,7 +31,8 @@ function AllDayCard({ event }) {
   const [showCheck, setShowCheck] = useState(false)
   const calRef = useRef(null)
   const sendRef = useRef(null)
-  const primary = event.sources?.[0]
+  const sources = sortedSources(event.sources)
+  const primary = sources[0]
 
   useEffect(() => {
     if (!calOpen) return
@@ -171,9 +173,9 @@ function AllDayCard({ event }) {
             ))}
           </div>
         )}
-        {event.sources && event.sources.length > 0 && (
+        {sources.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-2">
-            {event.sources.map((s) => (
+            {sources.map((s) => (
               <a
                 key={s.source_name}
                 href={s.source_url}
@@ -297,9 +299,9 @@ function AllDayCard({ event }) {
                   ))}
                 </div>
               )}
-              {event.sources && event.sources.length > 0 && (
+              {sources.length > 0 && (
                 <div className="pt-2 flex flex-wrap gap-2 border-t border-gray-100 mt-1">
-                  {event.sources.map((s) => (
+                  {sources.map((s) => (
                     <a
                       key={s.source_name}
                       href={s.source_url}
