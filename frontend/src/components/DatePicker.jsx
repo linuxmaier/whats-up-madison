@@ -12,7 +12,7 @@ export default function DatePicker({ value, onChange }) {
         onClick={() => shift(-1)}
         className="px-2 py-1 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
       >
-        ← <span className="hidden sm:inline">Yesterday</span>
+        ← <span className="hidden sm:inline">Previous</span>
       </button>
       <input
         id="date-input"
@@ -26,7 +26,7 @@ export default function DatePicker({ value, onChange }) {
         onClick={() => shift(1)}
         className="px-2 py-1 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
       >
-        <span className="hidden sm:inline">Tomorrow</span> →
+        <span className="hidden sm:inline">Next</span> →
       </button>
     </div>
   )
