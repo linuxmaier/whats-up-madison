@@ -80,6 +80,8 @@ export default function MapView({ events, stickyTop = 0 }) {
   return (
     <div className="mt-4">
       <div
+        role="region"
+        aria-label="Map of Madison events"
         style={{ height: mapHeight, minHeight: '400px' }}
         className="rounded-lg overflow-hidden border border-gray-200 shadow-sm"
       >

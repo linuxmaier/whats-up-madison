@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { formatTimeRange } from '../lib/eventTime'
@@ -8,6 +8,7 @@ import EventActionButtons from './EventActionButtons'
 export default function EventModal({ event, onClose }) {
   const sources = sortedSources(event.sources)
   const primaryUrl = sources[0]?.source_url
+  const dialogRef = useRef(null)
 
   useEffect(() => {
     function handleKey(e) {
@@ -17,6 +18,12 @@ export default function EventModal({ event, onClose }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
+  useEffect(() => {
+    const previousFocus = document.activeElement
+    dialogRef.current?.focus()
+    return () => { previousFocus?.focus() }
+  }, [])
+
   return createPortal(
     <div
       className="fixed inset-0 flex items-center justify-center p-4"
@@ -25,7 +32,12 @@ export default function EventModal({ event, onClose }) {
     >
       <div className="absolute inset-0 bg-black/30" />
       <div
-        className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="event-modal-title"
+        tabIndex={-1}
+        className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto focus:outline-none"
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 flex flex-col gap-2">
@@ -34,6 +46,7 @@ export default function EventModal({ event, onClose }) {
               <div className="flex-1 min-w-0">
                 {primaryUrl ? (
                   <a
+                    id="event-modal-title"
                     href={primaryUrl}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -42,7 +55,7 @@ export default function EventModal({ event, onClose }) {
                     {event.title}
                   </a>
                 ) : (
-                  <h3 className="text-lg font-semibold text-gray-900 leading-snug">{event.title}</h3>
+                  <h3 id="event-modal-title" className="text-lg font-semibold text-gray-900 leading-snug">{event.title}</h3>
                 )}
               </div>
             ) : (
@@ -62,6 +75,7 @@ export default function EventModal({ event, onClose }) {
           {!event.all_day && (
             primaryUrl ? (
               <a
+                id="event-modal-title"
                 href={primaryUrl}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -70,7 +84,7 @@ export default function EventModal({ event, onClose }) {
                 {event.title}
               </a>
             ) : (
-              <h2 className="text-lg font-semibold text-gray-900 leading-snug">{event.title}</h2>
+              <h2 id="event-modal-title" className="text-lg font-semibold text-gray-900 leading-snug">{event.title}</h2>
             )
           )}
           {event.venue_name && (

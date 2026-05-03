@@ -32,7 +32,7 @@ const DensityRail = forwardRef(function DensityRail({ hourCounts, onJumpToHour, 
               disabled={isEmpty}
               aria-label={`${count} event${count === 1 ? '' : 's'} starting at ${formatHourLabel(h)}`}
               title={`${formatHourLabel(h)}: ${count} event${count === 1 ? '' : 's'}`}
-              className={`flex-1 relative h-full min-w-0 ${
+              className={`flex-1 relative h-full min-w-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-1 ${
                 isEmpty ? 'cursor-default' : 'cursor-pointer group'
               }`}
             >
