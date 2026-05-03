@@ -20,6 +20,8 @@ class EventResponse(BaseModel):
     end_at: Optional[datetime] = None
     venue_name: Optional[str] = None
     venue_address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     categories: list[str] = []
     image_url: Optional[str] = None
     all_day: bool = False

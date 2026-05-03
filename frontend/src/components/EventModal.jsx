@@ -1,0 +1,209 @@
+import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { CalendarDays, Send, Check, X } from 'lucide-react'
+import { formatTimeRange } from '../lib/eventTime'
+import { googleCalendarUrl, downloadIcal, shareCalendarInvite, formatEventText } from '../lib/calendarUtils'
+import { sortedSources } from '../lib/sources'
+
+export default function EventModal({ event, onClose }) {
+  const [calOpen, setCalOpen] = useState(false)
+  const [sendOpen, setSendOpen] = useState(false)
+  const [showCheck, setShowCheck] = useState(false)
+  const calRef = useRef(null)
+  const sendRef = useRef(null)
+  const sources = sortedSources(event.sources)
+  const primaryUrl = sources[0]?.source_url
+
+  useEffect(() => {
+    if (!calOpen) return
+    function handleOutside(e) {
+      if (calRef.current && !calRef.current.contains(e.target)) setCalOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [calOpen])
+
+  useEffect(() => {
+    if (!sendOpen) return
+    function handleOutside(e) {
+      if (sendRef.current && !sendRef.current.contains(e.target)) setSendOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [sendOpen])
+
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  function flashCheck() {
+    setShowCheck(true)
+    setTimeout(() => setShowCheck(false), 1500)
+  }
+
+  async function handleCopyText(e) {
+    e.stopPropagation()
+    await navigator.clipboard.writeText(formatEventText(event))
+    setSendOpen(false)
+    flashCheck()
+  }
+
+  async function handleSendInvite(e) {
+    e.stopPropagation()
+    const result = await shareCalendarInvite(event)
+    setSendOpen(false)
+    if (result?.downloaded) flashCheck()
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center p-4"
+      style={{ zIndex: 10000 }}
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/30" />
+      <div
+        className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-2">
+            {event.all_day ? (
+              <div className="flex-1 min-w-0">
+                {primaryUrl ? (
+                  <a
+                    href={primaryUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-lg font-semibold text-gray-900 leading-snug hover:underline"
+                  >
+                    {event.title}
+                  </a>
+                ) : (
+                  <h3 className="text-lg font-semibold text-gray-900 leading-snug">{event.title}</h3>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 mt-0.5">{formatTimeRange(event.start_at, event.end_at)}</p>
+            )}
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <div className="relative" ref={calRef}>
+                <button
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded cursor-pointer"
+                  onClick={e => { e.stopPropagation(); setCalOpen(o => !o); setSendOpen(false) }}
+                  title="Add to calendar"
+                >
+                  <CalendarDays size={14} />
+                </button>
+                {calOpen && (
+                  <div className="absolute right-0 top-6 z-10 bg-white border border-gray-200 rounded shadow-md text-sm min-w-max">
+                    <button
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-50 whitespace-nowrap"
+                      onClick={e => { e.stopPropagation(); window.open(googleCalendarUrl(event), '_blank'); setCalOpen(false) }}
+                    >
+                      Google Calendar
+                    </button>
+                    <button
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-50 whitespace-nowrap"
+                      onClick={e => { e.stopPropagation(); downloadIcal(event); setCalOpen(false) }}
+                    >
+                      Apple / Outlook (.ics)
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="relative" ref={sendRef}>
+                <button
+                  className={`p-1 rounded cursor-pointer ${showCheck ? 'text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
+                  onClick={e => { e.stopPropagation(); setSendOpen(o => !o); setCalOpen(false) }}
+                  title="Send / share event"
+                >
+                  {showCheck ? <Check size={14} /> : <Send size={14} />}
+                </button>
+                {sendOpen && (
+                  <div className="absolute right-0 top-6 z-10 bg-white border border-gray-200 rounded shadow-md text-sm min-w-max">
+                    <button
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-50 whitespace-nowrap"
+                      onClick={handleCopyText}
+                    >
+                      Copy text
+                    </button>
+                    <button
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-50 whitespace-nowrap"
+                      onClick={handleSendInvite}
+                    >
+                      Calendar invite
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                className="text-gray-400 hover:text-gray-600 p-1 rounded cursor-pointer ml-1"
+                onClick={onClose}
+                title="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          {!event.all_day && (
+            primaryUrl ? (
+              <a
+                href={primaryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-lg font-semibold text-gray-900 leading-snug hover:underline"
+              >
+                {event.title}
+              </a>
+            ) : (
+              <h2 className="text-lg font-semibold text-gray-900 leading-snug">{event.title}</h2>
+            )
+          )}
+          {event.venue_name && (
+            <p className="text-sm text-gray-500">{event.venue_name}</p>
+          )}
+          {event.description && (
+            <div className="mt-1 space-y-2">
+              {event.description.split('\n\n').map((para, i) => (
+                <p key={i} className="text-sm text-gray-600 whitespace-pre-line">{para}</p>
+              ))}
+            </div>
+          )}
+          {event.categories?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {event.categories.map((c) => (
+                <span
+                  key={c}
+                  className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600"
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
+          {sources.length > 0 && (
+            <div className="pt-2 flex flex-wrap gap-2 border-t border-gray-100 mt-1">
+              {sources.map((s) => (
+                <a
+                  key={s.source_name}
+                  href={s.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  {s.source_name} ↗
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}

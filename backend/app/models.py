@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -16,6 +16,8 @@ class Event(Base):
     end_at = Column(DateTime(timezone=True))
     venue_name = Column(String)
     venue_address = Column(String)
+    latitude = Column(Float)
+    longitude = Column(Float)
     categories = Column(ARRAY(String), default=[])
     image_url = Column(String)
     all_day = Column(Boolean, nullable=False, server_default="false")
@@ -54,3 +56,17 @@ class Source(Base):
     last_run_at = Column(DateTime(timezone=True))
     last_run_status = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class VenueGeocode(Base):
+    __tablename__ = "venue_geocodes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lookup_key = Column(String, unique=True, nullable=False, index=True)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    display_name = Column(String)
+    status = Column(String, nullable=False)  # success | not_found | error
+    geocoder = Column(String, nullable=False, server_default="nominatim")
+    geocoded_at = Column(DateTime(timezone=True), server_default=func.now())
+    attempts = Column(Integer, nullable=False, server_default="1")

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
+from app.geocode_runner import geocode_all_missing, geocode_missing_for_source
 from app.ingest import ingest_events
 from app.routers import events
 from app.scrapers.isthmus import IsthmusSource
@@ -74,6 +75,14 @@ def trigger_scrape(db: Session = Depends(get_db)):
         except Exception as e:
             results[scraper.name] = {"error": str(e)}
             logger.warning("Scrape failed: %s — %s", scraper.name, e)
+            continue
+        try:
+            geo_stats = geocode_missing_for_source(scraper.name, db)
+            results[scraper.name] = {**results[scraper.name], **geo_stats}
+            logger.info("Geocode complete: %s — %s", scraper.name, geo_stats)
+        except Exception as e:
+            results[scraper.name]["geocode_error"] = str(e)
+            logger.warning("Geocode failed: %s — %s", scraper.name, e)
     try:
         results["_tagging"] = tag_untagged_events(db)
     except Exception as e:
@@ -85,5 +94,13 @@ def trigger_scrape(db: Session = Depends(get_db)):
 def trigger_tag(model: str = None, db: Session = Depends(get_db)):
     try:
         return tag_untagged_events(db, model=model)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/admin/geocode")
+def trigger_geocode(force: bool = False, db: Session = Depends(get_db)):
+    try:
+        return geocode_all_missing(db, force=force)
     except Exception as e:
         return {"error": str(e)}

@@ -183,6 +183,24 @@ Direct sources, generally worth their own scraper for completeness and richer da
 
 ---
 
+## Geocoding
+
+Event coordinates power the map view. The pipeline runs after each scraper inside `POST /admin/scrape` and is also exposed as `POST /admin/geocode` for backfill (`force=true` clears non-success cache rows and retries).
+
+### Nominatim (OpenStreetMap)
+- URL: https://nominatim.openstreetmap.org/search
+- Used by: `backend/app/geocoding.py`
+- Status: **integrated**
+- Notes: Free, open-source geocoder. ToS requires (a) max 1 request/second (enforced via module-level lock in `geocoding.py`), (b) a real `User-Agent` containing contact info (`whats-up-madison/0.1 (andrew.eric.maier@gmail.com)`), and (c) attribution on rendered tiles (handled by Leaflet's default attribution control). Address-form lookups are biased to a Madison bounding box; venue-name-only lookups (mostly Isthmus events with no street address) use structured `city=Madison&state=Wisconsin` params. Results are cached in the `venue_geocodes` table by a normalized lookup key, so re-scrapes cost ~0 network calls. Failed lookups (`status=not_found|error`) are also cached to avoid retry loops.
+
+### Tile provider — OpenStreetMap
+- URL: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
+- Used by: `frontend/src/components/MapView.jsx`
+- Status: **integrated**
+- Notes: Free public OSM tile servers used by the Leaflet map. Attribution is included in the `TileLayer` config per OSM's tile usage policy. If usage grows beyond hobby scale, switch to a hosted provider (MapTiler / Stadia / Mapbox).
+
+---
+
 ## Category Taxonomy
 
 Events are tagged with zero or more categories from a closed vocabulary. The canonical list lives in `backend/app/categories.py` — that module is the source of truth referenced by the LLM tagging pass (Step 4). When the taxonomy changes, update both files together.
