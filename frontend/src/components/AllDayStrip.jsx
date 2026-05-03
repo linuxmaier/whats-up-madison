@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { sortedSources } from '../lib/sources'
+import { sortedSources, isSafeHttpUrl } from '../lib/sources'
 import EventModal from './EventModal'
 import EventActionButtons from './EventActionButtons'
 
@@ -37,7 +37,7 @@ function AllDayCard({ event }) {
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalOpen(true) } }}
       >
         <div className="flex items-start justify-between gap-1">
-          {primary?.source_url ? (
+          {isSafeHttpUrl(primary?.source_url) ? (
             <a
               href={primary.source_url}
               target="_blank"
@@ -77,16 +77,22 @@ function AllDayCard({ event }) {
         {sources.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-2">
             {sources.map((s) => (
-              <a
-                key={s.source_name}
-                href={s.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-600 hover:underline"
-                onClick={e => e.stopPropagation()}
-              >
-                {s.source_name} ↗
-              </a>
+              isSafeHttpUrl(s.source_url) ? (
+                <a
+                  key={s.source_name}
+                  href={s.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {s.source_name} ↗
+                </a>
+              ) : (
+                <span key={s.source_name} className="text-xs text-gray-500">
+                  {s.source_name}
+                </span>
+              )
             ))}
           </div>
         )}
