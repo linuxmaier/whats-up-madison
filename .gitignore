@@ -28,6 +28,7 @@ frontend/.vite/
 # Local machine-specific
 local_management/
 .claude_scripts/
+.claude/
 
 # OS
 .DS_Store

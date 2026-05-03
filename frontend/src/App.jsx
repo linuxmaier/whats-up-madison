@@ -5,6 +5,7 @@ import AllDayStrip from './components/AllDayStrip'
 import BucketSection from './components/BucketSection'
 import CategoryFilter from './components/CategoryFilter'
 import VenueFilter from './components/VenueFilter'
+import MapView from './components/MapView'
 import { partitionEvents } from './lib/eventTime'
 import {
   filterEvents,
@@ -14,6 +15,15 @@ import {
 
 function toLocalDateString(date) {
   return date.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
+}
+
+const VIEW_KEY = 'whats-up-madison.viewMode'
+function loadViewMode() {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'map' ? 'map' : 'list'
+  } catch {
+    return 'list'
+  }
 }
 
 const BUCKETS = [
@@ -38,6 +48,7 @@ export default function App() {
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState(loadFilterState)
   const [hiddenVenues, setHiddenVenues] = useState(new Set())
+  const [viewMode, setViewMode] = useState(loadViewMode)
 
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
@@ -79,6 +90,10 @@ export default function App() {
     saveFilterState(filter)
   }, [filter])
 
+  useEffect(() => {
+    try { localStorage.setItem(VIEW_KEY, viewMode) } catch { /* ignore quota */ }
+  }, [viewMode])
+
   const allVenues = useMemo(() => {
     const names = events.map((e) => e.venue_name).filter(Boolean)
     return [...new Set(names)].sort()
@@ -108,6 +123,22 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3">
           <h1 className="text-lg font-bold text-gray-900">What's Up Madison</h1>
           <div className="flex items-center gap-2">
+            <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1 cursor-pointer ${viewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('map')}
+                className={`px-3 py-1 cursor-pointer ${viewMode === 'map' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
+                Map
+              </button>
+            </div>
             <CategoryFilter
               selected={filter.selected}
               includeUncategorized={filter.includeUncategorized}
@@ -143,22 +174,28 @@ export default function App() {
                   <span className="text-gray-400"> of {events.length}</span>
                 )}
               </p>
-              <DensityRail
-                ref={setRailEl}
-                stickyTop={headerH}
-                hourCounts={partition.hourCounts}
-                onJumpToHour={handleJumpToHour}
-              />
-              <AllDayStrip events={partition.allday} />
-              {BUCKETS.map((b) => (
-                <BucketSection
-                  key={b.id}
-                  id={b.id}
-                  label={b.label}
-                  events={partition[b.id]}
-                  stickyTop={headerH + railH}
-                />
-              ))}
+              {viewMode === 'list' ? (
+                <>
+                  <DensityRail
+                    ref={setRailEl}
+                    stickyTop={headerH}
+                    hourCounts={partition.hourCounts}
+                    onJumpToHour={handleJumpToHour}
+                  />
+                  <AllDayStrip events={partition.allday} />
+                  {BUCKETS.map((b) => (
+                    <BucketSection
+                      key={b.id}
+                      id={b.id}
+                      label={b.label}
+                      events={partition[b.id]}
+                      stickyTop={headerH + railH}
+                    />
+                  ))}
+                </>
+              ) : (
+                <MapView events={filteredEvents} stickyTop={headerH} />
+              )}
             </>
           )}
         </div>
