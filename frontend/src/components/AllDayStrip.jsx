@@ -31,8 +31,10 @@ function AllDayCard({ event }) {
   return (
     <>
       <div
-        className="bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm cursor-pointer hover:border-emerald-300 hover:shadow transition select-none"
+        tabIndex={0}
+        className="bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm cursor-pointer hover:border-emerald-300 hover:shadow transition select-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
         onClick={() => setModalOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalOpen(true) } }}
       >
         <div className="flex items-start justify-between gap-1">
           {primary?.source_url ? (
