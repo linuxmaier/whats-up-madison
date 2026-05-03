@@ -76,6 +76,25 @@ export function isDefaultFilterState({ selected, includeUncategorized }) {
   return true
 }
 
+const HIDDEN_VENUES_KEY = 'wum.hiddenVenues.v1'
+
+export function loadHiddenVenues() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_VENUES_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    return new Set(Array.isArray(parsed) ? parsed : [])
+  } catch {
+    return new Set()
+  }
+}
+
+export function saveHiddenVenues(hiddenVenues) {
+  try {
+    localStorage.setItem(HIDDEN_VENUES_KEY, JSON.stringify([...hiddenVenues].sort()))
+  } catch { /* ignore */ }
+}
+
 export function filterEvents(events, { selected, includeUncategorized }) {
   return events.filter((e) => {
     if (!e.categories || e.categories.length === 0) {

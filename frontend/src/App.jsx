@@ -11,6 +11,8 @@ import {
   filterEvents,
   loadFilterState,
   saveFilterState,
+  loadHiddenVenues,
+  saveHiddenVenues,
 } from './lib/categories'
 
 function toLocalDateString(date) {
@@ -47,7 +49,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState(loadFilterState)
-  const [hiddenVenues, setHiddenVenues] = useState(new Set())
+  const [hiddenVenues, setHiddenVenues] = useState(loadHiddenVenues)
   const [viewMode, setViewMode] = useState(loadViewMode)
 
   const headerRef = useRef(null)
@@ -75,7 +77,6 @@ export default function App() {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    setHiddenVenues(new Set())
     fetch(`/events?date=${selectedDate}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -89,6 +90,10 @@ export default function App() {
   useEffect(() => {
     saveFilterState(filter)
   }, [filter])
+
+  useEffect(() => {
+    saveHiddenVenues(hiddenVenues)
+  }, [hiddenVenues])
 
   useEffect(() => {
     try { localStorage.setItem(VIEW_KEY, viewMode) } catch { /* ignore quota */ }
@@ -182,7 +187,7 @@ export default function App() {
                     hourCounts={partition.hourCounts}
                     onJumpToHour={handleJumpToHour}
                   />
-                  <AllDayStrip events={partition.allday} />
+                  <AllDayStrip events={partition.allday} stickyTop={headerH + railH} />
                   {BUCKETS.map((b) => (
                     <BucketSection
                       key={b.id}
