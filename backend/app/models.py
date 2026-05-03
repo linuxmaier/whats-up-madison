@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -43,19 +43,6 @@ class EventSource(Base):
     event = relationship("Event", back_populates="sources")
 
     __table_args__ = (UniqueConstraint("event_id", "source_name"),)
-
-
-class Source(Base):
-    __tablename__ = "sources"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
-    scraper_type = Column(String, nullable=False)  # api, ical, html
-    config = Column(JSONB)
-    enabled = Column(Boolean, default=True)
-    last_run_at = Column(DateTime(timezone=True))
-    last_run_status = Column(String)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class VenueGeocode(Base):
