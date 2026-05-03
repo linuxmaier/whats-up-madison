@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
-from sqlalchemy import cast, func
+from sqlalchemy import cast, func, select
 from sqlalchemy import Date as SQLDate
 from sqlalchemy.orm import Session
 
@@ -118,9 +118,7 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
 
     # Mark events with no remaining active sources as removed
     active_event_ids = (
-        db.query(EventSource.event_id)
-        .filter(EventSource.is_active.is_(True))
-        .subquery()
+        select(EventSource.event_id).where(EventSource.is_active.is_(True))
     )
     db.query(Event).filter(
         Event.id.not_in(active_event_ids),
