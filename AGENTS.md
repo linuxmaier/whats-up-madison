@@ -127,9 +127,21 @@ After each scraper runs inside `POST /admin/scrape`, a geocoding pass populates 
 
 Scrapers don't need to do anything special — populating `RawEvent.venue_address` (preferred) or `RawEvent.venue_name` is enough for the geocoder to attempt a lookup.
 
+### Tagging (`backend/app/tagger.py`)
+
+`tag_untagged_events(db, model=None)` runs the LLM category-tagging pass. It selects active events whose `categories` array is empty (i.e., the source didn't pre-tag them) and whose `description` is at least 80 characters, batches them 25 at a time, and asks Claude to assign zero or more tags from `CATEGORIES`. The system prompt is sent with `cache_control: ephemeral` so repeated batches reuse the prompt cache. Predictions outside the taxonomy are silently dropped. Each batch commits independently, so a mid-run failure leaves prior batches persisted.
+
+- Runs automatically at the end of `POST /admin/scrape` after all scrapers + geocoding finish (under the `_tagging` key in the response).
+- Also exposed as `POST /admin/tag?model=<model-id>` for one-off runs or model evaluation. Without `model`, uses `settings.tagger_model` (default `claude-haiku-4-5`).
+- Idempotent — events that already have at least one category are skipped, so re-running is cheap.
+- Requires `ANTHROPIC_API_KEY` in `backend/.env`; raises `ValueError` if unset.
+- Skips events with short descriptions (<80 chars). Their card just shows no categories rather than wasting a token budget on guesses; if a source improves its descriptions, the next run picks them up.
+
 ### Environment Variables
 
 Loaded from `backend/.env` (gitignored). See `backend/.env.example` for required keys. Never hardcode credentials.
+
+`ADMIN_API_KEY` gates the `/admin/scrape`, `/admin/tag`, and `/admin/geocode` endpoints. All three require an `X-Admin-Key: <key>` request header. In development (`ENVIRONMENT=development`) with no key set the check is bypassed so existing dev workflows keep working. In production the app refuses to start if `ADMIN_API_KEY` is unset.
 
 `CORS_ORIGINS` must be a **comma-separated string**, not a JSON array. pydantic-settings v2 tries to JSON-parse `list[str]` fields from dotenv sources before validators run, which causes a `SettingsError` for non-JSON values. To avoid this, `cors_origins` is typed as `str` in `Settings` and exposed as a list via `settings.get_cors_origins()`. Do not change it back to `list[str]`.
 
@@ -179,10 +191,12 @@ To backfill or retry geocoding outside a scrape: `curl -X POST 'http://localhost
 
 ## Current Build Status
 
-- **Done (Step 1):** repo skeleton, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
-- **Done (Step 2):** multi-source `Event`/`EventSource` data model, `ingest.py`, `POST /admin/scrape` endpoint, React/Vite/Tailwind frontend (date picker + event cards)
-- **In progress (Step 3):** Isthmus integrated (iCal + RSS, 30-day window, ~235 events) and Visit Madison integrated (Simpleview JSON API, 30-day window, ~460 events with category pre-tagging); APScheduler for daily runs still planned; more sources in `docs/EVENT_SOURCES.md`
-- **In progress (Step 4):** category filter UI in frontend (multi-select tag cloud, default excludes Volunteer & Causes / Civic & Politics / Community & Clubs, persists to localStorage); LLM-assisted category tagging pass still planned (tracked in GH issue #6)
+- **Done (Step 1):** repo skeleton, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class.
+- **Done (Step 2):** multi-source `Event`/`EventSource` data model, `ingest.py`, `POST /admin/scrape` endpoint, React/Vite/Tailwind frontend (date picker + event cards).
+- **Done (Step 4):** closed category taxonomy in `backend/app/categories.py` (15 tags); Visit Madison events pre-tagged from the source's own taxonomy; LLM-assisted tagging pass shipped in `backend/app/tagger.py` (runs at end of `/admin/scrape`, also exposed as `/admin/tag`); category filter UI in frontend (multi-select tag cloud, sensible defaults, persists to localStorage).
+- **Done (Step 5):** geocoding pipeline (Nominatim, cached per venue in `venue_geocodes`) runs after each scraper; `latitude`/`longitude` exposed on the API; List/Map segmented toggle in the header renders a Leaflet map of Madison with clustered pins, multi-event popups, and a panel for events whose venues didn't resolve.
+- **Done (recent polish):** fuzzy cross-source dedup in ingest (title similarity ≥ 0.65 anchored by time + venue); explicit source priority ranking (`SOURCE_PRIORITY` in `frontend/src/lib/sources.js`); Isthmus description enrichment from event detail pages; Previous/Next nav buttons; sticky-header layout fixes.
+- **In progress (Step 3):** Isthmus integrated (iCal + RSS, 30-day window, ~235 events) and Visit Madison integrated (Simpleview JSON API, 30-day window, ~460 events); more sources in `docs/EVENT_SOURCES.md`; daily scheduling not yet wired up (no APScheduler — recommend running `/admin/scrape` from cron / systemd timer / external scheduler).
 
 Backend: http://localhost:8000 — API docs: http://localhost:8000/docs
 Frontend: http://localhost:5173

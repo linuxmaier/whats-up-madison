@@ -1,7 +1,9 @@
 import logging
 import logging.config
 
-from fastapi import Depends, FastAPI
+from typing import Optional
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -49,12 +51,19 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins(),
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-Admin-Key"],
 )
 
 app.include_router(events.router)
 
 SCRAPERS = [IsthmusSource(), VisitMadisonSource()]
+
+
+def require_admin_key(x_admin_key: Optional[str] = Header(default=None)):
+    if settings.environment == "development" and not settings.admin_api_key:
+        return
+    if not x_admin_key or x_admin_key != settings.admin_api_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
 
 
 @app.get("/health")
@@ -63,7 +72,7 @@ def health():
 
 
 @app.post("/admin/scrape")
-def trigger_scrape(db: Session = Depends(get_db)):
+def trigger_scrape(_: None = Depends(require_admin_key), db: Session = Depends(get_db)):
     results = {}
     for scraper in SCRAPERS:
         logger.info("Starting scrape: %s", scraper.name)
@@ -91,7 +100,7 @@ def trigger_scrape(db: Session = Depends(get_db)):
 
 
 @app.post("/admin/tag")
-def trigger_tag(model: str = None, db: Session = Depends(get_db)):
+def trigger_tag(model: str = None, _: None = Depends(require_admin_key), db: Session = Depends(get_db)):
     try:
         return tag_untagged_events(db, model=model)
     except Exception as e:
@@ -99,7 +108,7 @@ def trigger_tag(model: str = None, db: Session = Depends(get_db)):
 
 
 @app.post("/admin/geocode")
-def trigger_geocode(force: bool = False, db: Session = Depends(get_db)):
+def trigger_geocode(force: bool = False, _: None = Depends(require_admin_key), db: Session = Depends(get_db)):
     try:
         return geocode_all_missing(db, force=force)
     except Exception as e:
