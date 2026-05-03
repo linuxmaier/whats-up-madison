@@ -1,9 +1,15 @@
 import hashlib
 import html
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
+
+import httpx
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,6 +33,33 @@ class RawEvent:
             (self.venue_name or "").lower().strip(),
         ])
         return hashlib.sha256(key.encode()).hexdigest()
+
+
+def _is_retriable(exc: BaseException) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError))
+
+
+def _log_retry_attempt(retry_state) -> None:
+    logger.warning(
+        "HTTP request failed (attempt %d/3), retrying: %s",
+        retry_state.attempt_number,
+        retry_state.outcome.exception(),
+    )
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=retry_if_exception(_is_retriable),
+    before_sleep=_log_retry_attempt,
+)
+def http_get_with_retry(url: str, **kwargs) -> httpx.Response:
+    """GET `url` with automatic retry on 5xx and network/timeout errors."""
+    resp = httpx.get(url, **kwargs)
+    resp.raise_for_status()
+    return resp
 
 
 def clean_html_text(s: str) -> str:

@@ -5,12 +5,11 @@ from datetime import date, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
-import httpx
 import recurring_ical_events
 from bs4 import BeautifulSoup
 from icalendar import Calendar
 
-from app.scrapers.base import BaseSource, RawEvent, clean_html_text
+from app.scrapers.base import BaseSource, RawEvent, clean_html_text, http_get_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,7 @@ _FETCH_DELAY = 0.5  # seconds between detail-page fetches
 
 def _fetch_full_description(url: str) -> str | None:
     try:
-        resp = httpx.get(url, timeout=15)
-        resp.raise_for_status()
+        resp = http_get_with_retry(url, timeout=15)
         soup = BeautifulSoup(resp.content, "lxml")
         content = soup.find(id="content")
         if not content:
@@ -78,8 +76,7 @@ def _build_url_map(
     title_date_map: dict[tuple[str, str], str] = {}
     page = 1
     while True:
-        resp = httpx.get(_RSS_BASE, params={"page": page}, timeout=30)
-        resp.raise_for_status()
+        resp = http_get_with_retry(_RSS_BASE, params={"page": page}, timeout=30)
         root = ET.fromstring(resp.content)
         items = root.findall(".//item")
         if not items:
@@ -123,8 +120,7 @@ def _parse_ical(
     url_map: dict[tuple[str, str, str], str],
     title_date_map: dict[tuple[str, str], str],
 ) -> list[RawEvent]:
-    resp = httpx.get(_ICAL_URL, timeout=30)
-    resp.raise_for_status()
+    resp = http_get_with_retry(_ICAL_URL, timeout=30)
     cal = Calendar.from_ical(resp.content)
 
     events = []
