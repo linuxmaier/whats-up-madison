@@ -1,5 +1,4 @@
 import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
@@ -14,17 +13,17 @@ router = APIRouter(prefix="/events", tags=["events"])
 
 @router.get("", response_model=list[EventResponse])
 def get_events(
-    date: Optional[datetime.date] = None,
+    date: datetime.date,
     db: Session = Depends(get_db),
 ):
-    query = (
+    return (
         db.query(Event)
         .options(joinedload(Event.sources))
-        .filter(Event.status == "active")
-    )
-    if date:
-        query = query.filter(
+        .filter(
+            Event.status == "active",
             func.date(func.timezone("America/Chicago", Event.start_at)) <= date,
             func.date(func.timezone("America/Chicago", func.coalesce(Event.end_at, Event.start_at))) >= date,
         )
-    return query.order_by(Event.start_at).all()
+        .order_by(Event.start_at)
+        .all()
+    )
