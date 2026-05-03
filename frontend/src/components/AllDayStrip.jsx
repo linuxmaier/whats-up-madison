@@ -3,12 +3,12 @@ import { sortedSources } from '../lib/sources'
 import EventModal from './EventModal'
 import EventActionButtons from './EventActionButtons'
 
-export default function AllDayStrip({ events }) {
+export default function AllDayStrip({ events, stickyTop }) {
   if (!events || events.length === 0) return null
 
   return (
     <section id="allday" className="scroll-mt-32 mt-4">
-      <h2 className="sticky top-32 z-10 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between">
+      <h2 className="sticky z-10 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between" style={{ top: stickyTop }}>
         <span>All Day / Time Varies</span>
         <span className="text-xs font-normal opacity-70">
           {events.length} event{events.length === 1 ? '' : 's'}
