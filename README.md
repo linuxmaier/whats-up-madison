@@ -57,6 +57,22 @@ npm run dev
 
 - Frontend: http://localhost:5173
 
+### Production deployment
+
+Copy the root `.env.example` to `.env` and set real credentials:
+
+```
+cp .env.example .env
+```
+
+Then start with the prod overlay — this drops `--reload`, externalizes DB credentials, and runs as a non-root user:
+
+```
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+You'll also need `backend/.env` with `ANTHROPIC_API_KEY`, `ADMIN_API_KEY`, `CORS_ORIGINS`, etc. (see `backend/.env.example`).
+
 ### 5. Seed initial events
 
 ```
@@ -110,6 +126,8 @@ whats-up-madison/
 │           ├── eventTime.js    # time formatting + bucketing
 │           └── calendarUtils.js # iCal generation, Google Calendar URLs, share helpers
 ├── docker-compose.yml
+├── docker-compose.prod.yml     # prod overlay: drops --reload, externalizes creds, non-root user
+├── .env.example                # template for root-level Docker Compose env vars (prod)
 └── local_management/           # gitignored — machine-local notes and commands
 ```
 
