@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { formatTimeRange } from '../lib/eventTime'
-import { sortedSources } from '../lib/sources'
+import { sortedSources, isSafeHttpUrl } from '../lib/sources'
 import EventModal from './EventModal'
 import EventActionButtons from './EventActionButtons'
 
 export default function EventCard({ event }) {
   const [modalOpen, setModalOpen] = useState(false)
   const sources = sortedSources(event.sources)
-  const primaryUrl = sources[0]?.source_url
+  const primaryUrl = isSafeHttpUrl(sources[0]?.source_url) ? sources[0].source_url : null
 
   return (
     <>
@@ -59,16 +59,22 @@ export default function EventCard({ event }) {
         {sources.length > 0 && (
           <div className="mt-auto pt-2 flex flex-wrap gap-2">
             {sources.map((s) => (
-              <a
-                key={s.source_name}
-                href={s.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-600 hover:underline"
-                onClick={e => e.stopPropagation()}
-              >
-                {s.source_name} ↗
-              </a>
+              isSafeHttpUrl(s.source_url) ? (
+                <a
+                  key={s.source_name}
+                  href={s.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {s.source_name} ↗
+                </a>
+              ) : (
+                <span key={s.source_name} className="text-xs text-gray-500">
+                  {s.source_name}
+                </span>
+              )
             ))}
           </div>
         )}
