@@ -233,6 +233,67 @@ def _map_categories(doc: dict) -> list[str]:
     return seen
 
 
+def _top_level_times(
+    doc: dict, event_date: date
+) -> tuple[datetime, datetime | None] | None:
+    """Strategy 1: top-level startTime/endTime HMS fields.
+
+    Returns (start_at, end_at) when startTime is present, None otherwise.
+    end_at is None when endTime is absent; midnight-wrap is applied when
+    end_at would otherwise fall before start_at.
+    """
+    start_t = _parse_hms(doc.get("startTime"))
+    if start_t is None:
+        return None
+    start_at = datetime.combine(event_date, start_t, tzinfo=_CENTRAL)
+    end_at = None
+    end_t = _parse_hms(doc.get("endTime"))
+    if end_t is not None:
+        end_at = datetime.combine(event_date, end_t, tzinfo=_CENTRAL)
+        if end_at < start_at:
+            end_at += timedelta(days=1)
+    return start_at, end_at
+
+
+def _day_of_week_events(
+    doc: dict, times_str: str
+) -> list[tuple[datetime, datetime]]:
+    """Strategy 3: day-of-week recurrence from the times string.
+
+    Uses startDate/endDate from the doc to resolve weekday names to actual
+    dates, then returns a list of (start_at, end_at) aware datetime pairs.
+    Returns [] when dates are missing, times_str is empty, or no days match.
+    """
+    if not times_str:
+        return []
+    start_date_raw = _parse_iso_z(doc.get("startDate"))
+    end_date_raw = _parse_iso_z(doc.get("endDate"))
+    if not start_date_raw or not end_date_raw:
+        return []
+    start_date_local = start_date_raw.astimezone(_CENTRAL).date()
+    end_date_local = end_date_raw.astimezone(_CENTRAL).date()
+    occurrences = _parse_day_occurrences(times_str, start_date_local, end_date_local)
+    result = []
+    for d, st, et in occurrences:
+        start_at = datetime.combine(d, st, tzinfo=_CENTRAL)
+        end_at = datetime.combine(d, et, tzinfo=_CENTRAL)
+        if end_at < start_at:
+            end_at += timedelta(days=1)
+        result.append((start_at, end_at))
+    return result
+
+
+def _fallback_all_day_desc(times_str: str, description: str | None) -> str | None:
+    """Strategy 4: build the description for an all-day fallback event.
+
+    Prepends times_str to description when it carries useful info (non-empty
+    and does not just say "see event description").
+    """
+    if times_str and "see event description" not in times_str.lower():
+        return f"{times_str} — {description}" if description else times_str
+    return description
+
+
 def _to_raw_events(doc: dict) -> list[RawEvent]:
     title = (doc.get("title") or "").strip()
     if not title:
@@ -242,10 +303,7 @@ def _to_raw_events(doc: dict) -> list[RawEvent]:
     if event_date is None:
         return []
 
-    start_time_hms = _parse_hms(doc.get("startTime"))
-    end_time_hms = _parse_hms(doc.get("endTime"))
     times_str = (doc.get("times") or "").strip()
-
     venue_name = (doc.get("location") or "").strip() or None
     venue_address = _build_address(doc)
     raw_desc = doc.get("description") or doc.get("teaser") or ""
@@ -269,39 +327,21 @@ def _to_raw_events(doc: dict) -> list[RawEvent]:
             source_url=source_url,
         )
 
-    if start_time_hms is not None:
-        start_at = datetime.combine(event_date, start_time_hms, tzinfo=_CENTRAL)
-        end_at = None
-        if end_time_hms is not None:
-            end_at = datetime.combine(event_date, end_time_hms, tzinfo=_CENTRAL)
-            if end_at < start_at:
-                end_at += timedelta(days=1)
-        return [make_event(start_at, end_at)]
+    # Strategy 1: top-level startTime/endTime HMS fields.
+    top = _top_level_times(doc, event_date)
+    if top is not None:
+        return [make_event(*top)]
 
-    # No top-level startTime — try structured parsing of the times field.
+    # Strategy 2: structured "From: HH:MM AM to HH:MM PM" in the times field.
     parsed = _parse_from_to_times(times_str, event_date) if times_str else None
     if parsed is not None:
         return [make_event(*parsed)]
 
-    # Try day-of-week occurrence parsing (e.g. "Friday 6:30pm-7:30pm, Saturday 11:00am-12:00pm").
-    start_date_raw = _parse_iso_z(doc.get("startDate"))
-    end_date_raw = _parse_iso_z(doc.get("endDate"))
-    if start_date_raw and end_date_raw and times_str:
-        start_date_local = start_date_raw.astimezone(_CENTRAL).date()
-        end_date_local = end_date_raw.astimezone(_CENTRAL).date()
-        occurrences = _parse_day_occurrences(times_str, start_date_local, end_date_local)
-        if occurrences:
-            result = []
-            for d, st, et in occurrences:
-                start_at = datetime.combine(d, st, tzinfo=_CENTRAL)
-                end_at = datetime.combine(d, et, tzinfo=_CENTRAL)
-                if end_at < start_at:
-                    end_at += timedelta(days=1)
-                result.append(make_event(start_at, end_at))
-            return result
+    # Strategy 3: day-of-week recurrence ("Friday 6:30pm-7:30pm, Saturday 11am-12pm").
+    day_pairs = _day_of_week_events(doc, times_str)
+    if day_pairs:
+        return [make_event(*pair) for pair in day_pairs]
 
-    # Fall back to all-day with freeform times prepended to description.
-    all_day_desc = description
-    if times_str and "see event description" not in times_str.lower():
-        all_day_desc = f"{times_str} — {description}" if description else times_str
+    # Strategy 4: fall back to all-day with freeform times prepended to description.
+    all_day_desc = _fallback_all_day_desc(times_str, description)
     return [make_event(datetime.combine(event_date, dtime.min, tzinfo=_CENTRAL), all_day=True, desc=all_day_desc)]
