@@ -1,6 +1,7 @@
 import logging
 import logging.config
 
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -43,9 +44,18 @@ logging.config.dictConfig({
 
 logger = logging.getLogger(__name__)
 
-Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="What's Up Madison")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        logger.exception("Schema creation failed at startup: %s", e)
+        raise
+    yield
+
+
+app = FastAPI(title="What's Up Madison", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
