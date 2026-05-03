@@ -4,9 +4,7 @@ import time
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-import httpx
-
-from app.scrapers.base import BaseSource, RawEvent, clean_html_text
+from app.scrapers.base import BaseSource, RawEvent, clean_html_text, http_get_with_retry
 
 _API_URL = "https://www.visitmadison.com/includes/rest_v2/plugins_events_events_by_date/find/"
 _EVENTS_PAGE_URL = "https://www.visitmadison.com/events/"
@@ -87,12 +85,11 @@ class VisitMadisonSource(BaseSource):
                     "sort": {"date": 1},
                 },
             }
-            resp = httpx.get(
+            resp = http_get_with_retry(
                 _API_URL,
                 params={"json": json.dumps(payload), "token": token},
                 timeout=30,
             )
-            resp.raise_for_status()
             docs = resp.json().get("docs") or []
             for doc in docs:
                 events.extend(_to_raw_events(doc))
@@ -106,12 +103,11 @@ class VisitMadisonSource(BaseSource):
 
 def _fetch_token() -> str:
     try:
-        resp = httpx.get(_EVENTS_PAGE_URL, timeout=30)
-        resp.raise_for_status()
+        resp = http_get_with_retry(_EVENTS_PAGE_URL, timeout=30)
         match = _TOKEN_RE.search(resp.text)
         if match:
             return match.group(1)
-    except httpx.HTTPError:
+    except Exception:
         pass
     return _FALLBACK_TOKEN
 

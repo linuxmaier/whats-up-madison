@@ -12,3 +12,4 @@ beautifulsoup4>=4.12
 lxml>=5.3
 apscheduler>=3.10
 anthropic>=0.40
+tenacity>=8.2
