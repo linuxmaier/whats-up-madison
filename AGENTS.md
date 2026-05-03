@@ -116,6 +116,17 @@ Only `status = 'active'` events are returned.
 - All primary keys are UUIDs.
 - Session uses `autoflush=False` — call `db.flush()` explicitly before bulk update queries that need to see pending inserts.
 
+### Geocoding (`backend/app/geocoding.py`, `geocode_runner.py`)
+
+After each scraper runs inside `POST /admin/scrape`, a geocoding pass populates `Event.latitude`/`longitude` for any active event from that source that doesn't yet have coordinates. Results are cached in the `venue_geocodes` table keyed by a normalized lookup string, so two events at the same venue cost one Nominatim request and re-scrapes cost ~0 network calls.
+
+- Geocoder: Nominatim (OpenStreetMap). Free, but ToS requires (a) max 1 req/sec — enforced via a module-level lock in `geocoding.py`, (b) a real `User-Agent` with contact info, (c) attribution on rendered tiles (handled by Leaflet's default attribution control).
+- Address-form lookups query free-text bounded to a Madison bbox. Venue-name-only lookups (mostly Isthmus, no street address) append `", madison, wi"` to the name and use the same bbox-bounded query. **Do not** combine `q` with structured `city`/`state`/`country` params — Nominatim returns 400.
+- Failed lookups (`status=not_found|error`) are also cached so we don't retry every run. To retry them, hit `POST /admin/geocode?force=true` (clears non-success rows from `venue_geocodes` and re-runs the missing set).
+- For backfill or one-off geocodes outside a scrape, use `POST /admin/geocode`. Cache makes it near-instant when warm.
+
+Scrapers don't need to do anything special — populating `RawEvent.venue_address` (preferred) or `RawEvent.venue_name` is enough for the geocoder to attempt a lookup.
+
 ### Environment Variables
 
 Loaded from `backend/.env` (gitignored). See `backend/.env.example` for required keys. Never hardcode credentials.
@@ -133,6 +144,12 @@ React + Vite + Tailwind CSS. Node deps are project-local (not in conda).
 ### Card types
 
 There are two card components: `EventCard` (`frontend/src/components/EventCard.jsx`) for timed events and `AllDayCard` (inside `frontend/src/components/AllDayStrip.jsx`) for all-day / time-varies events. They have different visual weights but share most interaction patterns. When making a UI or behavior change to one, consider whether it applies to the other. It won't always be appropriate to treat them identically, but check both before deciding.
+
+The expanded-detail modal is shared: `frontend/src/components/EventModal.jsx` is rendered by both card components and by `MapView` pin popups. Modal-related changes (layout, share/calendar buttons, Escape behavior, etc.) belong in `EventModal.jsx` so all three callers stay in sync. Note: `EventModal` uses an inline `zIndex: 10000` rather than a Tailwind `z-*` class so it renders above Leaflet's panes (which go up to ~700).
+
+### List vs Map view
+
+The header has a List/Map segmented toggle. Both views consume the same `filteredEvents` array from `App.jsx`, so date / category / venue filters apply identically to both. View mode is persisted to localStorage under `whats-up-madison.viewMode`. List view renders the time-bucketed sections + density rail; map view renders `MapView.jsx` (Leaflet + react-leaflet, with `react-leaflet-cluster` for low-zoom clustering). Pins group co-located events (lat/lng to 5 decimal places ≈ 1m) into a single marker with a count badge; multi-event popups list `time — title` rows that each open `EventModal`. Events without coordinates are surfaced in a collapsible "events without a location" panel below the map so they're never dropped from view. When adding a new filter or selection that should affect the visible event set, apply it to `filteredEvents` in `App.jsx` and both views pick it up automatically.
 
 ```
 cd frontend
@@ -155,7 +172,10 @@ npm run build    # production build
 curl -X POST http://localhost:8000/admin/scrape
 ```
 
-Returns per-scraper stats: `{"Isthmus": {"inserted": N, "updated": N, "deactivated": N}}`.
+Returns per-scraper stats including ingestion + geocoding:
+`{"Isthmus": {"inserted": N, "updated": N, "deactivated": N, "geocoded": N, "geocode_misses": N, "geocode_skipped": N}}`.
+
+To backfill or retry geocoding outside a scrape: `curl -X POST 'http://localhost:8000/admin/geocode'` (add `?force=true` to clear non-success cache rows and retry previously-failed lookups).
 
 ## Current Build Status
 
