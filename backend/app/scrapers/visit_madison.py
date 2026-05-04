@@ -8,7 +8,7 @@ from app.scrapers.base import BaseSource, RawEvent, clean_html_text, http_get_wi
 
 _API_URL = "https://www.visitmadison.com/includes/rest_v2/plugins_events_events_by_date/find/"
 _EVENTS_PAGE_URL = "https://www.visitmadison.com/events/"
-_FALLBACK_TOKEN = "e3dfe8528d358756953f873be82e42a2"
+_FALLBACK_TOKEN = "e3dfe8528d358756953f873be82e42a2"  # public widget token embedded in Visit Madison's own site, not a secret to rotate
 _TOKEN_RE = re.compile(r'"apiToken"\s*:\s*"([0-9a-f]{32})"')
 _CENTRAL = ZoneInfo("America/Chicago")
 _WINDOW_DAYS = 30
