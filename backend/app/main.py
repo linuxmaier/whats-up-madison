@@ -97,7 +97,11 @@ async def submit_feedback(request: FeedbackRequest):
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
-            json={"title": request.title, "body": request.body, "labels": ["user-feedback"]},
+            json={
+                "title": request.title,
+                "body": request.body + (f"\n\n---\n**Contact:** {request.contact}" if request.contact.strip() else ""),
+                "labels": ["user-feedback"],
+            },
         )
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail=f"GitHub API error: {resp.status_code}")

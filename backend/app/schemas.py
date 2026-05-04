@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_validator
 class FeedbackRequest(BaseModel):
     title: str
     body: str
+    contact: str = ""
     website: str = ""  # honeypot — bots fill this; humans don't see it
 
     @field_validator("title", "body")

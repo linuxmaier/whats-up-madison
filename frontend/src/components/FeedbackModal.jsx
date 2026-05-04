@@ -8,6 +8,7 @@ const GITHUB_ISSUES_URL = `https://github.com/${GITHUB_REPO}/issues/new`
 export default function FeedbackModal({ open, onClose }) {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [contact, setContact] = useState('')
   const [honeypot, setHoneypot] = useState('')
   const [status, setStatus] = useState('idle') // idle | submitting | success | error
   const [issueUrl, setIssueUrl] = useState(null)
@@ -32,6 +33,7 @@ export default function FeedbackModal({ open, onClose }) {
   function handleClose() {
     setTitle('')
     setBody('')
+    setContact('')
     setHoneypot('')
     setStatus('idle')
     setIssueUrl(null)
@@ -45,7 +47,7 @@ export default function FeedbackModal({ open, onClose }) {
       const res = await fetch('/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, body, website: honeypot }),
+        body: JSON.stringify({ title, body, contact, website: honeypot }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
@@ -156,6 +158,20 @@ export default function FeedbackModal({ open, onClose }) {
                   onChange={e => setBody(e.target.value)}
                   placeholder="Describe the bug or suggestion in more detail"
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-gray-400"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label htmlFor="feedback-contact" className="text-sm font-medium text-gray-700">
+                  Contact <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  id="feedback-contact"
+                  type="text"
+                  value={contact}
+                  onChange={e => setContact(e.target.value)}
+                  placeholder="Email or other way to reach you"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
                 />
               </div>
 
