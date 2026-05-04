@@ -6,6 +6,7 @@ import BucketSection from './components/BucketSection'
 import CategoryFilter from './components/CategoryFilter'
 import VenueFilter from './components/VenueFilter'
 import MapView from './components/MapView'
+import FeedbackModal from './components/FeedbackModal'
 import { partitionEvents } from './lib/eventTime'
 import {
   filterEvents,
@@ -53,6 +54,7 @@ export default function App() {
   const [filter, setFilter] = useState(loadFilterState)
   const [hiddenVenues, setHiddenVenues] = useState(loadHiddenVenues)
   const [viewMode, setViewMode] = useState(loadViewMode)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
@@ -215,6 +217,29 @@ export default function App() {
           )}
         </div>
       </div>
+
+      <footer className="border-t border-gray-200 mt-4">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 text-xs text-gray-400">
+          <a
+            href="https://github.com/linuxmaier/whats-up-madison"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-gray-600 transition-colors"
+          >
+            Open source
+          </a>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            className="hover:text-gray-600 transition-colors cursor-pointer"
+            onClick={() => setFeedbackOpen(true)}
+          >
+            Submit feedback
+          </button>
+        </div>
+      </footer>
+
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   )
 }
