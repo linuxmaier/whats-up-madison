@@ -99,7 +99,7 @@ async def submit_feedback(request: FeedbackRequest):
             },
             json={
                 "title": request.title,
-                "body": request.body + (f"\n\n---\n**Contact:** {request.contact}" if request.contact.strip() else ""),
+                "body": request.body + (f"\n\n---\n**Email:** {request.contact}" if request.contact.strip() else ""),
                 "labels": ["user-feedback"],
             },
         )

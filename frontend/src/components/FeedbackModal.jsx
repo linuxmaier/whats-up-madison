@@ -163,14 +163,14 @@ export default function FeedbackModal({ open, onClose }) {
 
               <div className="flex flex-col gap-1">
                 <label htmlFor="feedback-contact" className="text-sm font-medium text-gray-700">
-                  Contact <span className="font-normal text-gray-400">(optional)</span>
+                  Email <span className="font-normal text-gray-400">(optional)</span>
                 </label>
                 <input
                   id="feedback-contact"
-                  type="text"
+                  type="email"
                   value={contact}
                   onChange={e => setContact(e.target.value)}
-                  placeholder="Email or other way to reach you"
+                  placeholder="your@email.com"
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
                 />
               </div>
