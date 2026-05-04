@@ -15,6 +15,8 @@ import {
   saveHiddenVenues,
 } from './lib/categories'
 
+const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
+
 function toLocalDateString(date) {
   return date.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
 }
@@ -79,7 +81,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError(null)
-    fetch(`/events?date=${selectedDate}`)
+    fetch(`${API_BASE}/events?date=${selectedDate}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
