@@ -89,8 +89,9 @@ Direct sources, generally worth their own scraper for completeness and richer da
 
 ### High Noon Saloon
 - URL: https://high-noon.com/calendar/
-- Scraper type prospect: html
-- Status: **investigating**
+- Scraper type: html
+- Status: **integrated**
+- Notes: Frank Productions / FPC Live property at 701 E. Washington Ave. WordPress site (custom post type `tm_event`, theme `fpc-main` from 45press.com). Calendar page renders ~60 upcoming shows in a single HTML response (~7-month forward window) as `article.event-card` elements with title, date ("May 7, 2026"), times ("Doors: 7:00 pm | Show: 8:00 pm" — Show preferred, Doors fallback), supporting acts, presented-by line, image, and `tm_classifications-*` taxonomy slugs as CSS classes. Single GET per scrape, no pagination (`/calendar/page/2/` returns the same page). robots.txt is fully open. Music genres map to `Music`; `arts-theatre` maps to `Theater & Stage`; `the-moth` / `use-your-noggin` / `nerd-nite` map to `Talks & Learning`. The source's `community-civic` slug is dropped — observed in practice as a catch-all (e.g. tagging student music showcases) rather than a clean civic-events category. WP REST API at `/wp-json/wp/v2/tm_event` was rejected: it exposes the post-publish timestamp under `date`, not the event date, and `acf` is empty.
 
 ### Majestic Theatre
 - URL: https://majesticmadison.com/
