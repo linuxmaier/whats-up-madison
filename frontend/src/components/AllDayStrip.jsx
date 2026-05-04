@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { sortedSources, isSafeHttpUrl } from '../lib/sources'
 import EventModal from './EventModal'
 import EventActionButtons from './EventActionButtons'
+import CostBadge from './CostBadge'
 
 export default function AllDayStrip({ events, stickyTop }) {
   if (!events || events.length === 0) return null
@@ -50,7 +51,8 @@ function AllDayCard({ event }) {
           ) : (
             <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2 flex-1 min-w-0">{event.title}</h3>
           )}
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
+          <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+            <CostBadge description={event.description} />
             <EventActionButtons event={event} compact />
           </div>
         </div>

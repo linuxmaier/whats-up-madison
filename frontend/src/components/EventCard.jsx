@@ -3,6 +3,7 @@ import { formatTimeRange } from '../lib/eventTime'
 import { sortedSources, isSafeHttpUrl } from '../lib/sources'
 import EventModal from './EventModal'
 import EventActionButtons from './EventActionButtons'
+import CostBadge from './CostBadge'
 
 export default function EventCard({ event }) {
   const [modalOpen, setModalOpen] = useState(false)
@@ -18,7 +19,10 @@ export default function EventCard({ event }) {
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalOpen(true) } }}
       >
         <div className="flex items-start justify-between mb-0.5">
-          <p className="text-xs text-gray-400">{formatTimeRange(event.start_at, event.end_at)}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs text-gray-400">{formatTimeRange(event.start_at, event.end_at)}</p>
+            <CostBadge description={event.description} />
+          </div>
           <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
             <EventActionButtons event={event} />
           </div>
