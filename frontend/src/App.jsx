@@ -129,31 +129,31 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div ref={headerRef} className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3">
+        <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           <button
             type="button"
             onClick={() => setSelectedDate(toLocalDateString(new Date()))}
-            className="text-lg font-bold text-gray-900 hover:text-gray-600 cursor-pointer transition-colors"
+            className="text-lg font-bold text-gray-900 hover:text-gray-600 cursor-pointer transition-colors flex-1 sm:flex-none"
           >
             What's Up Madison
           </button>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`px-3 py-1 cursor-pointer ${viewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
-                List
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('map')}
-                className={`px-3 py-1 cursor-pointer ${viewMode === 'map' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
-                Map
-              </button>
-            </div>
+          <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1 cursor-pointer ${viewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('map')}
+              className={`px-3 py-1 cursor-pointer ${viewMode === 'map' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+            >
+              Map
+            </button>
+          </div>
+          <div className="w-full sm:w-auto sm:ml-auto flex items-center gap-2">
             <CategoryFilter
               selected={filter.selected}
               includeUncategorized={filter.includeUncategorized}

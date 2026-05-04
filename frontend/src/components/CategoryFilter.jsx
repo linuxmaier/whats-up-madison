@@ -83,7 +83,7 @@ export default function CategoryFilter({
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 8h10M11 12h2M11 16h2" />
         </svg>
-        <span>Categories</span>
+        <span className="hidden sm:inline">Categories</span>
         {showBadge && (
           <span className="text-[10px] px-1 py-0.5 rounded-full bg-blue-600 text-white leading-none">
             {hiddenCount} hidden
