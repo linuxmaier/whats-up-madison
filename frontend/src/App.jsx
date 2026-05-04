@@ -128,7 +128,13 @@ export default function App() {
     <div className="min-h-screen bg-gray-50">
       <div ref={headerRef} className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3">
-          <h1 className="text-lg font-bold text-gray-900">What's Up Madison</h1>
+          <button
+            type="button"
+            onClick={() => setSelectedDate(toLocalDateString(new Date()))}
+            className="text-lg font-bold text-gray-900 hover:text-gray-600 cursor-pointer transition-colors"
+          >
+            What's Up Madison
+          </button>
           <div className="flex items-center gap-2">
             <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
               <button
