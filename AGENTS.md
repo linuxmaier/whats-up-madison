@@ -145,6 +145,8 @@ Loaded from `backend/.env` (gitignored). See `backend/.env.example` for required
 
 `CORS_ORIGINS` must be a **comma-separated string**, not a JSON array. pydantic-settings v2 tries to JSON-parse `list[str]` fields from dotenv sources before validators run, which causes a `SettingsError` for non-JSON values. To avoid this, `cors_origins` is typed as `str` in `Settings` and exposed as a list via `settings.get_cors_origins()`. Do not change it back to `list[str]`.
 
+`GITHUB_TOKEN` is a GitHub Personal Access Token with `issues: write` scope. Used by `POST /feedback` to file user-submitted feedback as GitHub Issues labeled `user-feedback`. If unset, the endpoint returns HTTP 503. Not required in development if you don't need to test feedback submission.
+
 ## Frontend
 
 React + Vite + Tailwind CSS. Node deps are project-local (not in conda).
@@ -170,7 +172,7 @@ npm run dev      # dev server at http://localhost:5173
 npm run build    # production build
 ```
 
-`vite.config.js` proxies `/events` and `/admin` to `http://localhost:8000`, so no CORS issues in dev.
+`vite.config.js` proxies `/events`, `/admin`, and `/feedback` to `http://localhost:8000`, so no CORS issues in dev.
 
 ## Linting
 
