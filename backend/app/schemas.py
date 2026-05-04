@@ -2,7 +2,21 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+class FeedbackRequest(BaseModel):
+    title: str
+    body: str
+    contact: str = ""
+    website: str = ""  # honeypot — bots fill this; humans don't see it
+
+    @field_validator("title", "body")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("must not be blank")
+        return v
 
 
 class SourceRef(BaseModel):

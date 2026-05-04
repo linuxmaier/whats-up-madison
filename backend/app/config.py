@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     tagger_model: str = "claude-haiku-4-5"
     admin_api_key: str = ""
+    github_token: str = ""
+    github_repo: str = "linuxmaier/whats-up-madison"
 
     @model_validator(mode="after")
     def check_production_admin_key(self):

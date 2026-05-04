@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       '/events': backendUrl,
       '/admin': backendUrl,
+      '/feedback': backendUrl,
     },
   },
 })
