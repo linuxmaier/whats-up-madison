@@ -12,7 +12,7 @@ from app.scrapers.base import RawEvent
 logger = logging.getLogger(__name__)
 
 _FILLABLE_FIELDS = ("description", "end_at", "venue_name", "venue_address", "image_url")
-FUZZY_TITLE_THRESHOLD = 0.65
+FUZZY_TITLE_THRESHOLD = 0.65  # tuned empirically against the Isthmus + Visit Madison overlap
 
 
 def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> dict:

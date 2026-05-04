@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 _ICAL_URL = "https://isthmus.com/search/event/calendar-of-events/calendar.ics"
 _RSS_BASE = "https://isthmus.com/search/event/calendar-of-events/index.rss"
 _CENTRAL = ZoneInfo("America/Chicago")
-_WINDOW_DAYS = 30
+_WINDOW_DAYS = 30  # matches the iCal feed's effective range
 _DESC_MIN_LEN = 80
-_FETCH_DELAY = 0.5  # seconds between detail-page fetches
+_FETCH_DELAY = 0.5  # courtesy delay between detail-page fetches; Isthmus has no published rate limit
 
 
 def _fetch_full_description(url: str) -> str | None:

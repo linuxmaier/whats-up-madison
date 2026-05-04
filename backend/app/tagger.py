@@ -13,7 +13,7 @@ from app.models import Event
 logger = logging.getLogger(__name__)
 
 _CATEGORIES_SET = frozenset(CATEGORIES)
-_MIN_DESCRIPTION_LEN = 80
+_MIN_DESCRIPTION_LEN = 80  # shorter descriptions don't give the LLM enough signal and waste tokens
 
 _SYSTEM_PROMPT = (
     "You are a category classifier for a Madison, WI community events listing.\n\n"
@@ -122,7 +122,7 @@ def tag_untagged_events(db: Session, model: Optional[str] = None) -> dict:
 
     tagged = 0
     batches = 0
-    batch_size = 25
+    batch_size = 25  # balances prompt-cache hit rate vs. risk of one bad event polluting a batch
 
     for i in range(0, len(to_tag), batch_size):
         batch_items = to_tag[i : i + batch_size]
