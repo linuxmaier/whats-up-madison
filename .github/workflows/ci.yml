@@ -16,6 +16,18 @@ jobs:
       - run: pip install ruff
       - run: ruff check backend/
 
+  frontend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+
   test:
     runs-on: ubuntu-latest
     needs: lint

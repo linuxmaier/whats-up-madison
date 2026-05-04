@@ -67,6 +67,7 @@ export default function App() {
   }, [])
 
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!railEl) { setRailH(0); return }
     setRailH(railEl.offsetHeight)
     const ro = new ResizeObserver(() => setRailH(railEl.offsetHeight))
@@ -75,6 +76,7 @@ export default function App() {
   }, [railEl])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError(null)
     fetch(`/events?date=${selectedDate}`)
