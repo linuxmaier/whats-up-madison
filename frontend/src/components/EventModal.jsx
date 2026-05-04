@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { formatTimeRange } from '../lib/eventTime'
 import { sortedSources, isSafeHttpUrl } from '../lib/sources'
 import EventActionButtons from './EventActionButtons'
+import CostBadge from './CostBadge'
 
 export default function EventModal({ event, onClose }) {
   const sources = sortedSources(event.sources)
@@ -59,9 +60,13 @@ export default function EventModal({ event, onClose }) {
                 )}
               </div>
             ) : (
-              <p className="text-xs text-gray-400 mt-0.5">{formatTimeRange(event.start_at, event.end_at)}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-gray-400 mt-0.5">{formatTimeRange(event.start_at, event.end_at)}</p>
+                <CostBadge description={event.description} />
+              </div>
             )}
             <div className="flex items-center gap-0.5 flex-shrink-0">
+              {event.all_day && <CostBadge description={event.description} />}
               <EventActionButtons event={event} />
               <button
                 className="text-gray-400 hover:text-gray-600 p-1 rounded cursor-pointer ml-1"
