@@ -24,6 +24,7 @@ env/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.wrangler/
 
 # Local machine-specific
 local_management/
