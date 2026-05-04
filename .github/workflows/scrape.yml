@@ -1,0 +1,16 @@
+name: Daily Scrape
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # 8am CT (UTC-5)
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger scrape
+        run: |
+          curl -f -X POST https://whats-up-madison.fly.dev/admin/scrape \
+            -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
+            --max-time 600
