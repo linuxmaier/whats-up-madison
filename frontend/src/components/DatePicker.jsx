@@ -164,6 +164,16 @@ export default function DatePicker({ value, onChange }) {
                 )
               })}
             </div>
+
+            <div className="mt-2 pt-2 border-t border-gray-100 text-center">
+              <button
+                type="button"
+                onClick={() => { onChange(todayStr); setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); setOpen(false) }}
+                className="text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              >
+                Today
+              </button>
+            </div>
           </div>
         )}
       </div>
