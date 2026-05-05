@@ -13,4 +13,4 @@ jobs:
         run: |
           curl -f -X POST https://whats-up-madison.fly.dev/admin/scrape \
             -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
-            --max-time 600
+            --max-time 1800
