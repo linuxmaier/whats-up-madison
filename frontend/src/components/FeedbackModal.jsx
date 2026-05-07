@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
+const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
 const GITHUB_REPO = 'linuxmaier/whats-up-madison'
 const GITHUB_ISSUES_URL = `https://github.com/${GITHUB_REPO}/issues/new`
 
@@ -44,7 +45,7 @@ export default function FeedbackModal({ open, onClose }) {
     e.preventDefault()
     setStatus('submitting')
     try {
-      const res = await fetch('/feedback', {
+      const res = await fetch(`${API_BASE}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, body, contact, website: honeypot }),
