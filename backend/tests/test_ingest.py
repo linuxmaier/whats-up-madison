@@ -103,6 +103,56 @@ def test_fuzzy_match_merges(db):
 
 
 # ---------------------------------------------------------------------------
+# 4b. Substring titles merge even when SequenceMatcher ratio is low
+# ---------------------------------------------------------------------------
+
+def test_substring_title_merges(db):
+    # Real-world case: High Noon ("Pert Near Sandstone") and Ticketmaster
+    # ("Pert Near Sandstone-Side by Side Album Release & Road to Blue Ox Tour")
+    # for the same show. SequenceMatcher.ratio is ~0.40 because the longer
+    # title is much longer, but with identical start_at + venue_name the two
+    # rows are clearly the same event and should be merged.
+    short_title = "Pert Near Sandstone"
+    long_title = "Pert Near Sandstone-Side by Side Album Release & Road to Blue Ox Tour"
+
+    ingest_events("Source A", [_raw(title=short_title, source_name="Source A")], db)
+    ingest_events(
+        "Source B",
+        [_raw(title=long_title, source_name="Source B", source_url="https://b.example/2")],
+        db,
+    )
+
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+    # Reverse direction: long title first, short title second — also merges.
+    db.query(EventSource).delete()
+    db.query(Event).delete()
+    db.commit()
+    ingest_events("Source B", [_raw(title=long_title, source_name="Source B")], db)
+    ingest_events(
+        "Source A",
+        [_raw(title=short_title, source_name="Source A", source_url="https://a.example/3")],
+        db,
+    )
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+
+def test_unrelated_titles_do_not_merge_via_substring(db):
+    # Sanity check: two different events at the same time + venue must stay
+    # separate even though no title contains the other. (e.g. distinct
+    # support acts in opening slots are uncommon, but defensive coverage.)
+    ingest_events("Source A", [_raw(title="Concert in the Park", source_name="Source A")], db)
+    ingest_events(
+        "Source B",
+        [_raw(title="Totally Different Event", source_name="Source B", source_url="https://b.example/4")],
+        db,
+    )
+    assert db.query(Event).count() == 2
+
+
+# ---------------------------------------------------------------------------
 # 5. Staleness: event removed from a run → EventSource inactive, Event removed
 # ---------------------------------------------------------------------------
 
