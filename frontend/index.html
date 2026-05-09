@@ -6,6 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Discover events happening in Madison, WI" />
     <title>What's Up Madison</title>
+    <script>
+      // Pre-warm the backend so its cold start (Fly auto-stop) overlaps with
+      // the JS bundle download instead of blocking the first /events fetch.
+      (function () {
+        var backend = "%VITE_BACKEND_URL%";
+        if (backend && /^https?:/.test(backend)) {
+          var link = document.createElement('link');
+          link.rel = 'preconnect';
+          link.href = backend;
+          link.crossOrigin = '';
+          document.head.appendChild(link);
+          fetch(backend + '/health').catch(function () {});
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
