@@ -7,6 +7,7 @@ from typing import Optional
 import httpx
 from sqlalchemy.orm import Session
 
+from app import canonical_venues
 from app.models import Event, VenueGeocode
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,19 @@ def geocode_lookup(lookup_key: str, db: Session) -> Optional[tuple[float, float]
 
 
 def geocode_event(event: Event, db: Session) -> bool:
-    """Set event.latitude/longitude from cache or Nominatim. Returns True on hit."""
+    """Set event.latitude/longitude from canonical registry, cache, or Nominatim.
+
+    Returns True if coordinates were changed. Canonical registry hits short-
+    circuit ahead of any cache or network lookup so listed venues are immune
+    to upstream address malformations (see #115).
+    """
+    canonical = canonical_venues.lookup(event.venue_name)
+    if canonical is not None:
+        if event.latitude == canonical.latitude and event.longitude == canonical.longitude:
+            return False
+        event.latitude = canonical.latitude
+        event.longitude = canonical.longitude
+        return True
     if event.latitude is not None and event.longitude is not None:
         return False
     key = normalize_lookup(event.venue_name, event.venue_address)
