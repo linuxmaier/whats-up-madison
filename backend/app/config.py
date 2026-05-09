@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     admin_api_key: str = ""
     github_token: str = ""
     github_repo: str = "linuxmaier/whats-up-madison"
+    ticketmaster_api_key: str = ""
 
     @model_validator(mode="after")
     def check_production_admin_key(self):

@@ -153,7 +153,7 @@ React + Vite + Tailwind CSS. Node deps are project-local (not in conda).
 
 ### Source priority
 
-`frontend/src/lib/sources.js` exports `sortedSources(sources)`, which sorts a `sources` array by `SOURCE_PRIORITY` (currently `['Isthmus', 'Visit Madison']`). Both card components use this to determine the title link (first source wins) and footer display order. When adding a new scraper, add it to `SOURCE_PRIORITY` at the appropriate trust rank; sources not in the list sort to the end.
+`frontend/src/lib/sources.js` exports `sortedSources(sources)`, which sorts a `sources` array by `SOURCE_PRIORITY` (a hand-ordered list of integrated scraper names). Both card components use this to determine the title link (first source wins) and footer display order. When adding a new scraper, add it to `SOURCE_PRIORITY` at the appropriate trust rank; sources not in the list sort to the end.
 
 ### Card types
 
@@ -198,7 +198,7 @@ To backfill or retry geocoding outside a scrape: `curl -X POST 'http://localhost
 - **Done (Step 4):** closed category taxonomy in `backend/app/categories.py` (15 tags); Visit Madison events pre-tagged from the source's own taxonomy; LLM-assisted tagging pass shipped in `backend/app/tagger.py` (runs at end of `/admin/scrape`, also exposed as `/admin/tag`); category filter UI in frontend (multi-select tag cloud, sensible defaults, persists to localStorage).
 - **Done (Step 5):** geocoding pipeline (Nominatim, cached per venue in `venue_geocodes`) runs after each scraper; `latitude`/`longitude` exposed on the API; List/Map segmented toggle in the header renders a Leaflet map of Madison with clustered pins, multi-event popups, and a panel for events whose venues didn't resolve.
 - **Done (recent polish):** fuzzy cross-source dedup in ingest (title similarity ≥ 0.65 anchored by time + venue); explicit source priority ranking (`SOURCE_PRIORITY` in `frontend/src/lib/sources.js`); Isthmus description enrichment from event detail pages; Previous/Next nav buttons; sticky-header layout fixes.
-- **In progress (Step 3):** Isthmus integrated (iCal + RSS, 30-day window, ~235 events) and Visit Madison integrated (Simpleview JSON API, 30-day window, ~460 events); more sources in `docs/EVENT_SOURCES.md`; daily scheduling not yet wired up (no APScheduler — recommend running `/admin/scrape` from cron / systemd timer / external scheduler).
+- **In progress (Step 3):** five scrapers integrated — Isthmus (iCal + RSS), Visit Madison (Simpleview JSON API), High Noon Saloon (HTML calendar), Our Lives (Tribe Events REST), and Ticketmaster (Discovery API, multi-venue: Sylvee, Majestic, Orpheum, Overture, Kohl Center, etc.). All but High Noon use a 30-day forward window. More candidate sources in `docs/EVENT_SOURCES.md`; daily scheduling not yet wired up (no APScheduler — recommend running `/admin/scrape` from cron / systemd timer / external scheduler).
 
 Backend: http://localhost:8000 — API docs: http://localhost:8000/docs
 Frontend: http://localhost:5173
