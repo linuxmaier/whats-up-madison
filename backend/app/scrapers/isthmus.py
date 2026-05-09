@@ -77,6 +77,8 @@ def _build_url_map(
     page = 1
     while True:
         resp = http_get_with_retry(_RSS_BASE, params={"page": page}, timeout=30)
+        if not resp.content.strip():
+            break
         root = ET.fromstring(resp.content)
         items = root.findall(".//item")
         if not items:
