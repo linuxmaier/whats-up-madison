@@ -18,6 +18,7 @@ from app.schemas import FeedbackRequest
 from app.scrapers.high_noon import HighNoonSource
 from app.scrapers.isthmus import IsthmusSource
 from app.scrapers.our_lives import OurLivesSource
+from app.scrapers.ticketmaster import TicketmasterSource
 from app.scrapers.visit_madison import VisitMadisonSource
 from app.tagger import tag_untagged_events
 
@@ -70,7 +71,7 @@ app.add_middleware(
 
 app.include_router(events.router)
 
-SCRAPERS = [IsthmusSource(), VisitMadisonSource(), HighNoonSource(), OurLivesSource()]
+SCRAPERS = [IsthmusSource(), VisitMadisonSource(), HighNoonSource(), OurLivesSource(), TicketmasterSource()]
 
 
 def require_admin_key(x_admin_key: Optional[str] = Header(default=None)):

@@ -33,6 +33,12 @@ These cover many venues and event types from a single source. Highest leverage i
 - Status: **integrated**
 - Notes: Official tourism CVB site, curated and lower-noise than Isthmus. Uses the Simpleview DMS events JSON API at `/includes/rest_v2/plugins_events_events_by_date/find/`. Public `apiToken` is hardcoded in the events page HTML and extracted on each run (with a hardcoded fallback in case extraction fails). Paginated at `limit=30` due to a 200 KB server-side response cap; ~460 events in a 30-day window means ~15-16 sequential requests per run, throttled at 0.5 s between pages. Maps Simpleview's category taxonomy to our taxonomy where unambiguous; ambiguous and non-content categories (Annual Events, Arts & Culture, Entertainment & Nightlife, Fairs & Festivals, Free Event, Holiday/Seasonal, Shopping, Virtual Event) are dropped and left for the LLM tagging pass.
 
+### Ticketmaster
+- URL: https://app.ticketmaster.com/discovery/v2/events.json
+- Scraper type: api (Ticketmaster Discovery API)
+- Status: **integrated**
+- Notes: Multi-venue Madison aggregator. A single GET to `/discovery/v2/events.json?city=Madison&stateCode=WI&countryCode=US` (with `startDateTime`/`endDateTime` bounding a 30-day forward window) covers every Madison venue that sells tickets through Ticketmaster — The Sylvee, Majestic Theatre, Orpheum, Barrymore, Overture Center (and its sub-rooms), Kohl Center, Camp Randall, Breese Stevens, Roxxy, etc. Paginated `size=200` (~2 pages, ~250 events). Auth via `apikey=` query param (the `TICKETMASTER_API_KEY` setting); rate limit is 5 req/s and 5000/day so we sleep 0.25 s between pages. Events with `dates.status.code` in {`cancelled`, `postponed`} are dropped; `onsale`/`offsale`/`rescheduled` are kept. Time parsing uses `dates.start.{localDate,localTime}` + `dates.timezone`; missing `localTime` or `timeTBA=true` falls back to all-day. `spanMultipleDays=true` populates `end_at`. Description from `info` (preferred) or `pleaseNote`; both are plain text so no HTML cleaning needed. Classifications map conservatively: `Music/*` → `Music`; `Arts & Theatre / Comedy` → `Open Mic & Comedy`; `Arts & Theatre / Theatre|Children's Theatre|Performance Art|Dance` → `Theater & Stage`; `Sports/*` → `Sports & Recreation`; `Family/*` → `Family & Kids`. `Arts & Theatre / Miscellaneous` and `Undefined`/`Miscellaneous` segments are dropped so the LLM tagger handles them. The same event sometimes appears multiple times (e.g. distinct listings for affiliate sales channels like the UW Badgers store) — `canonical_hash` collapses these. Events that overlap with the dedicated High Noon Saloon scraper land on the same `Event` row via fuzzy dedup, with both `EventSource` rows kept; the High Noon URL wins for the title link via `SOURCE_PRIORITY`.
+
 ### Our Lives
 - URL: https://ourliveswisconsin.com/events/
 - Scraper type: api
@@ -101,14 +107,15 @@ Direct sources, generally worth their own scraper for completeness and richer da
 
 ### Majestic Theatre
 - URL: https://majesticmadison.com/
-- Scraper type prospect: html
-- Status: **investigating**
+- Scraper type: api (Ticketmaster Discovery API)
+- Status: **integrated**
+- Notes: Covered by the **Ticketmaster** aggregator scraper above (Discovery API venue ID `KovZpZAaltvA`, ~33 upcoming events at integration time). No standalone Majestic scraper needed. The Majestic's own site (majesticmadison.com) was not separately scraped — Ticketmaster is the authoritative ticket-sales URL, and `SOURCE_PRIORITY` already routes title links there for Majestic events.
 
 ### The Sylvee (Frank Productions)
 - URL: https://www.ticketmaster.com/the-sylvee-tickets-madison/venue/237554
-- Scraper type prospect: api (Ticketmaster Discovery API)
-- Status: **investigating**
-- Notes: Tickets sold via Ticketmaster — could pull this and other Ticketmaster venues at once.
+- Scraper type: api (Ticketmaster Discovery API)
+- Status: **integrated**
+- Notes: Covered by the **Ticketmaster** aggregator scraper above (Discovery API venue ID `KovZ917AQBC`, ~30 upcoming events at integration time). The Sylvee shares Frank Productions ownership with High Noon Saloon, but unlike High Noon (which has its own calendar page) The Sylvee's only public events surface is Ticketmaster.
 
 ### Atwood Music Hall
 - URL: https://www.theatwoodmusichall.com/shows

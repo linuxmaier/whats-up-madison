@@ -161,7 +161,16 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
     best: "Event | None" = None
     best_ratio = 0.0
     for event in candidates:
-        ratio = SequenceMatcher(None, raw_title, event.title.lower().strip()).ratio()
+        cand_title = event.title.lower().strip()
+        ratio = SequenceMatcher(None, raw_title, cand_title).ratio()
+        # When one title is fully contained in the other (e.g. "Pert Near
+        # Sandstone" vs "Pert Near Sandstone-Side by Side Album Release …"),
+        # treat it as a match. SequenceMatcher's ratio drops well below the
+        # threshold for prefix/extension cases like this even though it's
+        # clearly the same event. Safe because we already require an exact
+        # start_at + venue_name anchor.
+        if raw_title and cand_title and (raw_title in cand_title or cand_title in raw_title):
+            ratio = max(ratio, 1.0)
         if ratio > best_ratio:
             best_ratio, best = ratio, event
 
