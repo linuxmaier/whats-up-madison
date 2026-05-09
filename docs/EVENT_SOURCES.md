@@ -33,6 +33,12 @@ These cover many venues and event types from a single source. Highest leverage i
 - Status: **integrated**
 - Notes: Official tourism CVB site, curated and lower-noise than Isthmus. Uses the Simpleview DMS events JSON API at `/includes/rest_v2/plugins_events_events_by_date/find/`. Public `apiToken` is hardcoded in the events page HTML and extracted on each run (with a hardcoded fallback in case extraction fails). Paginated at `limit=30` due to a 200 KB server-side response cap; ~460 events in a 30-day window means ~15-16 sequential requests per run, throttled at 0.5 s between pages. Maps Simpleview's category taxonomy to our taxonomy where unambiguous; ambiguous and non-content categories (Annual Events, Arts & Culture, Entertainment & Nightlife, Fairs & Festivals, Free Event, Holiday/Seasonal, Shopping, Virtual Event) are dropped and left for the LLM tagging pass.
 
+### Our Lives
+- URL: https://ourliveswisconsin.com/events/
+- Scraper type: api
+- Status: **integrated**
+- Notes: Wisconsin's LGBTQ community magazine and event hub. WordPress site running The Events Calendar (Tribe) plugin; uses the public REST endpoint `/wp-json/tribe/events/v1/events` (no auth). 30-day forward window, paginated `per_page=50` (~3 pages, ~120 events statewide). The feed covers all of Wisconsin, so the scraper applies a city allowlist filter to keep only Madison-metro events: Madison, Middleton, Verona, Sun Prairie, Waunakee, Fitchburg, Monona, McFarland, Stoughton. Venues with no `city` field (e.g. Overture Center) are accepted when the address contains "madison" or a 537xx ZIP. Tribe taxonomy maps conservatively to ours (`Music`, `Comedy`, `Dance`, `Theater`/`Performance Art`/`Drag` → `Theater & Stage`, `Workshop`/`Lecture`/`Reading` → `Talks & Learning`, `Activism` → `Civic & Politics`, `Fundraiser` → `Volunteer & Causes`, etc.); ambiguous tags (`Social`, `Festival`, `Pride`, `Party`), regional tags (`Madison + South Central`, etc.), and audience-targeting tags (`21+`, `All Ages`) are dropped so the LLM tagger handles them. Recurring events arrive as separate occurrences with date-stamped URLs (e.g. `/event/euchre-night/2026-05-08/`), so no RRULE expansion is needed. Polite 1s delay between pages.
+
 ### Eventbrite
 - URL: https://www.eventbrite.com/d/wi--madison/events/
 - Scraper type prospect: api
