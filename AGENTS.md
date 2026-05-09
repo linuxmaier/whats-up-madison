@@ -127,6 +127,15 @@ After each scraper runs inside `POST /admin/scrape`, a geocoding pass populates 
 
 Scrapers don't need to do anything special — populating `RawEvent.venue_address` (preferred) or `RawEvent.venue_name` is enough for the geocoder to attempt a lookup.
 
+#### Canonical venue registry (`backend/app/canonical_venues.py`)
+
+A small allowlist of well-known Madison venues (High Noon Saloon, The Sylvee, Majestic, Orpheum, Barrymore, Overture Center) maps `venue_name` → known-good `(latitude, longitude, address)`. Two consumers use it:
+
+- `geocode_event` consults the registry **before** the cache or Nominatim — short-circuits the network call entirely, immune to upstream address quirks, and corrects already-bad coordinates on the next geocode pass.
+- `ingest_events` overwrites `Event.venue_address` with the canonical address when `venue_name` matches, regardless of `_FILLABLE_FIELDS` semantics. This was added because Visit Madison sometimes ships malformed addresses (e.g. `701A E Washington Ave` for High Noon) that snap to wrong coordinates and clutter the displayed address card.
+
+To add a venue: lowercase the name as it appears in `Event.venue_name`, curl Nominatim with the canonical address to get verified coordinates, then add an entry. Add alt spellings (e.g. "orpheum theater" vs "orpheum theatre") as separate keys — matching is exact after lowercase + trim.
+
 ### Tagging (`backend/app/tagger.py`)
 
 `tag_untagged_events(db, model=None)` runs the LLM category-tagging pass. It selects active events whose `categories` array is empty (i.e., the source didn't pre-tag them) and whose `description` is at least 80 characters, batches them 25 at a time, and asks Claude to assign zero or more tags from `CATEGORIES`. The system prompt is sent with `cache_control: ephemeral` so repeated batches reuse the prompt cache. Predictions outside the taxonomy are silently dropped. Each batch commits independently, so a mid-run failure leaves prior batches persisted.

@@ -6,6 +6,7 @@ from sqlalchemy import cast, func, select
 from sqlalchemy import Date as SQLDate
 from sqlalchemy.orm import Session
 
+from app import canonical_venues
 from app.models import Event, EventSource
 from app.scrapers.base import RawEvent
 
@@ -81,6 +82,12 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
                 changed = True
             if changed:
                 updated += 1
+
+        # Overwrite venue_address with the canonical value when this venue is
+        # in the registry, regardless of fill-in-nulls semantics — the whole
+        # point is that aggregator addresses for these venues are unreliable
+        # (#115). Skipped when the venue isn't a known canonical match.
+        _apply_canonical_address(event)
 
         if event.id not in seen_for_source:
             source = (
@@ -180,6 +187,14 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
         )
         return best
     return None
+
+
+def _apply_canonical_address(event: Event) -> None:
+    canonical = canonical_venues.lookup(event.venue_name)
+    if canonical is None:
+        return
+    if event.venue_address != canonical.address:
+        event.venue_address = canonical.address
 
 
 def _dedupe_by_hash(raw_events: list[RawEvent]) -> list[RawEvent]:

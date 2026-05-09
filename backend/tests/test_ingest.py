@@ -207,3 +207,61 @@ def test_pre_dedup_collapses_same_hash(db):
 
     event = db.query(Event).one()
     assert set(event.categories) == {"community", "food"}
+
+
+# ---------------------------------------------------------------------------
+# 8. Canonical-venue address override (#115): a malformed address from an
+#    aggregator is replaced with the canonical address regardless of fill-in-
+#    nulls semantics, so the displayed address card and the geocoder both see
+#    the clean string.
+# ---------------------------------------------------------------------------
+
+def test_canonical_venue_address_overrides_malformed_input_on_insert(db):
+    bad = _raw(
+        title="Pert Near Sandstone",
+        venue_name="High Noon Saloon",
+        venue_address="701A E Washington Ave, Madison, WI 53703",
+        source_name="Visit Madison",
+    )
+
+    ingest_events("Visit Madison", [bad], db)
+
+    event = db.query(Event).one()
+    assert event.venue_address == "701 E Washington Ave, Madison, WI 53703"
+
+
+def test_canonical_venue_address_corrected_on_subsequent_run(db):
+    bad = _raw(
+        title="Pert Near Sandstone",
+        venue_name="High Noon Saloon",
+        venue_address="701A E Washington Ave, Madison, WI 53703",
+        source_name="Source A",
+    )
+    ingest_events("Source A", [bad], db)
+    event = db.query(Event).one()
+    assert event.venue_address == "701 E Washington Ave, Madison, WI 53703"
+
+    # A second source confirming the same event keeps the canonical value
+    # rather than falling back to its own address (also possibly off).
+    other = _raw(
+        title="Pert Near Sandstone",
+        venue_name="High Noon Saloon",
+        venue_address="701 East Washington Avenue, Madison, WI 53703",
+        source_name="Source B",
+        source_url="https://b.example/1",
+    )
+    ingest_events("Source B", [other], db)
+
+    db.refresh(event)
+    assert event.venue_address == "701 E Washington Ave, Madison, WI 53703"
+
+
+def test_non_canonical_venue_address_is_left_untouched(db):
+    raw = _raw(
+        venue_name="Some Random Bar",
+        venue_address="999 Fake Street, Madison, WI",
+    )
+    ingest_events("Source A", [raw], db)
+
+    event = db.query(Event).one()
+    assert event.venue_address == "999 Fake Street, Madison, WI"

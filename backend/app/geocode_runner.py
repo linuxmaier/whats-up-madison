@@ -1,9 +1,10 @@
 import logging
 import time
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app import canonical_venues
 from app.geocoding import geocode_event
 from app.models import Event, EventSource, VenueGeocode
 
@@ -11,12 +12,20 @@ logger = logging.getLogger(__name__)
 
 
 def _missing_coords_query(db: Session):
+    # Canonical-venue events are always included so wrong coords cached by an
+    # earlier ingest get re-checked and corrected against the registry on the
+    # next pass (see #115). geocode_event is a no-op when coords already match,
+    # so the extra rows are cheap.
+    canonical_names = canonical_venues.canonical_keys()
     return (
         db.query(Event)
         .filter(
             Event.status == "active",
-            Event.latitude.is_(None),
             or_(Event.venue_address.isnot(None), Event.venue_name.isnot(None)),
+            or_(
+                Event.latitude.is_(None),
+                func.lower(func.trim(Event.venue_name)).in_(canonical_names),
+            ),
         )
     )
 
