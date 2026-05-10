@@ -109,6 +109,10 @@ start_at::date <= requested_date AND coalesce(end_at, start_at)::date >= request
 
 Only `status = 'active'` events are returned.
 
+### Search
+
+`GET /events/search?q=<query>` (`backend/app/routers/events.py`) returns active, today-or-future events whose title, description, or venue_name match the query (case-insensitive substring), ordered by `start_at` ascending and capped at `SEARCH_RESULT_LIMIT` (200). Empty/whitespace query returns `[]`. The endpoint deliberately ignores the frontend's category and venue filters — the typed query is the only filter, so users searching by name aren't surprised by an empty result set caused by a stale filter.
+
 ### Database
 
 - Tables are created at startup via `Base.metadata.create_all()` — no migration runner yet.
@@ -173,6 +177,10 @@ The expanded-detail modal is shared: `frontend/src/components/EventModal.jsx` is
 ### List vs Map view
 
 The header has a List/Map segmented toggle. Both views consume the same `filteredEvents` array from `App.jsx`, so date / category / venue filters apply identically to both. View mode is persisted to localStorage under `whats-up-madison.viewMode`. List view renders the time-bucketed sections + density rail; map view renders `MapView.jsx` (Leaflet + react-leaflet, with `react-leaflet-cluster` for low-zoom clustering). Pins group co-located events (lat/lng to 5 decimal places ≈ 1m) into a single marker with a count badge; multi-event popups list `time — title` rows that each open `EventModal`. Events without coordinates are surfaced in a collapsible "events without a location" panel below the map so they're never dropped from view. When adding a new filter or selection that should affect the visible event set, apply it to `filteredEvents` in `App.jsx` and both views pick it up automatically.
+
+### Search
+
+`SearchBar` (`frontend/src/components/SearchBar.jsx`) lives in the header. Typing a non-empty query (debounced 250ms) hits `GET /events/search?q=` and replaces the date-based view with `SearchResults` (`frontend/src/components/SearchResults.jsx`), which groups matching events under sticky local-date headers and renders each event with the standard `EventCard`. While searching, the List/Map toggle, category/venue filters, and date picker are hidden — they don't apply to search results. Clearing the input (× button or Escape while focused) restores the date view.
 
 ```
 cd frontend

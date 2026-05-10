@@ -24,6 +24,13 @@ const minuteFmt = new Intl.DateTimeFormat('en-US', {
   timeZone: TZ,
 })
 
+const dateHeaderFmt = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  timeZone: TZ,
+})
+
 export function formatTime(iso) {
   return timeFmt.format(new Date(iso))
 }
@@ -33,12 +40,16 @@ export function formatTimeRange(start, end) {
   return `${formatTime(start)} – ${formatTime(end)}`
 }
 
+export function formatLocalDate(iso) {
+  return dateHeaderFmt.format(new Date(iso))
+}
+
 export function localHour(iso) {
   const h = parseInt(hourFmt.format(new Date(iso)), 10)
   return h === 24 ? 0 : h
 }
 
-function localYMD(iso) {
+export function localYMD(iso) {
   return ymdFmt.format(new Date(iso))
 }
 
