@@ -119,8 +119,9 @@ Direct sources, generally worth their own scraper for completeness and richer da
 
 ### Atwood Music Hall
 - URL: https://www.theatwoodmusichall.com/shows
-- Scraper type prospect: html
-- Status: **investigating**
+- Scraper type: html
+- Status: **integrated**
+- Notes: Squarespace **events collection** rendered server-side as well-structured HTML. Single GET to `/shows` returns ~70 events spanning ~9 months — past + upcoming on the same page. The scraper selects only `article.eventlist-event--upcoming` to avoid resurrecting events the staleness sweep has already deactivated. Per-event venue is extracted from `li.eventlist-meta-address`: at integration time the page also surfaced shows at sister venues **Barrymore Theatre** (2090 Atwood Ave) and **Liquid** (624 University Ave), so the scraper does not hardcode a venue name. Address is parsed from the embedded `maps.google.com?q=…` link and normalized (drop trailing `, United States`, collapse `Madison, WI, 53704` → `Madison, WI 53704`). `event-time-localized-start`/`-end` text gives wall-clock times that we localize to `America/Chicago`; cross-midnight shows are detected via end ≤ start and the end rolls to the next calendar day. Categories left empty and deferred to the LLM tagger — Atwood hosts music, comedy/improv, sing-along dance parties, etc., too varied to safely pre-tag from the venue alone (and many excerpts are short enough that the tagger will skip them, which is preferable to mis-tagging everything as Music). robots.txt allows the rendered `/shows` page; only `?format=ical`, `?format=json`, `/api/`, etc. are disallowed (the scraper doesn't touch those). Canonical venue entry added for `atwood music hall` so the geocoder short-circuits Nominatim and the displayed address stays consistent.
 
 ### Concerts on the Square (Wisconsin Chamber Orchestra)
 - URL: https://wcoconcerts.org/concerts-tickets/concerts-on-the-square

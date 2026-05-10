@@ -15,6 +15,7 @@ from app.geocode_runner import geocode_all_missing, geocode_missing_for_source
 from app.ingest import ingest_events
 from app.routers import events
 from app.schemas import FeedbackRequest
+from app.scrapers.atwood import AtwoodMusicHallSource
 from app.scrapers.high_noon import HighNoonSource
 from app.scrapers.isthmus import IsthmusSource
 from app.scrapers.our_lives import OurLivesSource
@@ -71,7 +72,14 @@ app.add_middleware(
 
 app.include_router(events.router)
 
-SCRAPERS = [IsthmusSource(), VisitMadisonSource(), HighNoonSource(), OurLivesSource(), TicketmasterSource()]
+SCRAPERS = [
+    IsthmusSource(),
+    VisitMadisonSource(),
+    HighNoonSource(),
+    OurLivesSource(),
+    TicketmasterSource(),
+    AtwoodMusicHallSource(),
+]
 
 
 def require_admin_key(x_admin_key: Optional[str] = Header(default=None)):
