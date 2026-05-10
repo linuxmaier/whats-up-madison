@@ -25,6 +25,9 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "high noon saloon": CanonicalVenue(
         43.0797191, -89.3762962, "701 E Washington Ave, Madison, WI 53703"
     ),
+    "atwood music hall": CanonicalVenue(
+        43.0909400, -89.3556544, "1925 Winnebago St, Madison, WI 53704"
+    ),
     "the sylvee": CanonicalVenue(
         43.0808002, -89.3746711, "25 S Livingston St, Madison, WI 53703"
     ),

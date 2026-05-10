@@ -54,21 +54,40 @@ def test_first_run_insert(db):
 
 
 # ---------------------------------------------------------------------------
-# 2. Fill-in-nulls: never overwrites set values; fills previously-null fields
+# 2. Same-source re-runs trust the latest scrape output
 # ---------------------------------------------------------------------------
 
-def test_fill_in_nulls_does_not_overwrite(db):
+def test_same_source_re_run_overwrites_set_fields(db):
+    # When the scrape output changes, the venue's data changed — reflect it.
+    # Covers reschedules, description edits, image swaps, etc.
     first = _raw(description="Original description", venue_address=None)
     ingest_events("Source A", [first], db)
 
-    second = _raw(description="New description attempt", venue_address="123 Main St")
+    second = _raw(description="Venue updated the description", venue_address="123 Main St")
     stats = ingest_events("Source A", [second], db)
 
     assert stats["updated"] == 1
 
     event = db.query(Event).one()
-    assert event.description == "Original description"
+    # Set values are overwritten by the new scrape output.
+    assert event.description == "Venue updated the description"
+    # Previously-null fields are filled.
     assert event.venue_address == "123 Main St"
+
+
+def test_same_source_re_run_picks_up_time_reschedule(db):
+    # Venue moves the show from 8 PM to 11 PM the same day. canonical_hash
+    # keys on the date, so the existing row matches and gets updated.
+    original = _raw(start_at=datetime(2026, 6, 15, 20, 0, 0, tzinfo=timezone.utc))
+    ingest_events("Source A", [original], db)
+
+    rescheduled = _raw(start_at=datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc))
+    stats = ingest_events("Source A", [rescheduled], db)
+
+    assert stats["inserted"] == 0
+    assert stats["updated"] == 1
+    event = db.query(Event).one()
+    assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -315,3 +334,118 @@ def test_lower_priority_source_does_not_overwrite(db):
 
     event = db.query(Event).one()
     assert event.description == "Jackie Venson performs her soulful blend of blues and rock."
+
+
+def test_higher_priority_source_overwrites_start_at(db):
+    # Visit Madison (rank 4) runs first with a wrong time.
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        start_at=datetime(2026, 6, 15, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("Visit Madison", [vm_event], db)
+
+    # High Noon (rank 0) runs second with the right time — must overwrite.
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        start_at=datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    event = db.query(Event).one()
+    assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)
+
+
+def test_higher_priority_none_end_at_clears_lower_priority_end_at(db):
+    # start_at + end_at are a coupled pair: the end is anchored to the start.
+    # If a higher-trust source overwrites start_at, its view of end_at — even
+    # None — replaces the prior end, because the prior end belonged to the
+    # now-discarded start.
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        start_at=datetime(2026, 6, 15, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    vm_event.end_at = datetime(2026, 6, 15, 21, 0, 0, tzinfo=timezone.utc)
+    ingest_events("Visit Madison", [vm_event], db)
+
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        start_at=datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc),
+    )
+    # High Noon doesn't carry end_at — raw.end_at is None.
+    assert hn_event.end_at is None
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    event = db.query(Event).one()
+    assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)
+    # Visit Madison's 9 PM end is gone — it was anchored to the 8 PM start
+    # that High Noon overrode.
+    assert event.end_at is None
+
+
+def test_same_source_re_run_clears_stale_end_at(db):
+    # Atwood's prod-bug scenario: the first run wrote a placeholder end_at;
+    # the scraper now correctly emits end_at=None when the start was sourced
+    # from the description. The same-source re-run must clear the stale end.
+    placeholder = _raw(start_at=datetime(2026, 7, 7, 20, 0, 0, tzinfo=timezone.utc))
+    placeholder.end_at = datetime(2026, 7, 7, 21, 0, 0, tzinfo=timezone.utc)
+    ingest_events("Source A", [placeholder], db)
+
+    corrected = _raw(start_at=datetime(2026, 7, 7, 23, 0, 0, tzinfo=timezone.utc))
+    assert corrected.end_at is None
+    ingest_events("Source A", [corrected], db)
+
+    event = db.query(Event).one()
+    assert event.start_at == datetime(2026, 7, 7, 23, 0, 0, tzinfo=timezone.utc)
+    assert event.end_at is None
+
+
+def test_lower_priority_does_not_clear_end_at(db):
+    # Symmetric counter-case: a lower-priority source's None end_at must NOT
+    # clear a higher-priority source's set end_at. (Without this, every
+    # Visit Madison run would nuke end_at fields populated by High Noon /
+    # Ticketmaster on overlapping events.)
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        start_at=datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc),
+    )
+    hn_event.end_at = datetime(2026, 6, 16, 1, 0, 0, tzinfo=timezone.utc)
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        start_at=datetime(2026, 6, 15, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert vm_event.end_at is None
+    ingest_events("Visit Madison", [vm_event], db)
+
+    event = db.query(Event).one()
+    # High Noon's start + end remain authoritative.
+    assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)
+    assert event.end_at == datetime(2026, 6, 16, 1, 0, 0, tzinfo=timezone.utc)
+
+
+def test_lower_priority_source_does_not_overwrite_start_at(db):
+    # High Noon (rank 0) runs first with the right time.
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        start_at=datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    # Visit Madison (rank 4) runs second with a worse time — must not win.
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        start_at=datetime(2026, 6, 15, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("Visit Madison", [vm_event], db)
+
+    event = db.query(Event).one()
+    assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)
