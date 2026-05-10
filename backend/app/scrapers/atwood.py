@@ -15,6 +15,18 @@ _CALENDAR_URL = f"{_BASE_URL}/shows"
 _CENTRAL = ZoneInfo("America/Chicago")
 _DEFAULT_VENUE_NAME = "Atwood Music Hall"
 _TIME_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*(am|pm)\s*$", re.IGNORECASE)
+# Atwood's structured `event-time-localized-*` fields are unreliable placeholders
+# (commonly nominal "8:00 PM - 9:00 PM" regardless of the real show time). The
+# excerpt's "Show <time>" line is what the venue actually communicates as the
+# show time — observed off by 1-3 hours from the structured times across the
+# entire current calendar. Match "Show 11PM", "Show: 6:00pm", "Show 7:30 PM",
+# "/ Show 8pm", etc. Capture groups: hour, optional :minute, am|pm.
+_DESC_SHOW_RE = re.compile(
+    r"\bShow\b\s*[:/]?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", re.IGNORECASE
+)
+_DESC_DOORS_RE = re.compile(
+    r"\bDoors\b\s*[:/]?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", re.IGNORECASE
+)
 
 
 class AtwoodMusicHallSource(BaseSource):
@@ -119,9 +131,39 @@ def _extract_description(card: Tag) -> str | None:
     return text or None
 
 
+def _show_time_from_description(description: str | None) -> dtime | None:
+    """Pull the actual show time out of the excerpt. Prefers `Show <time>`;
+    falls back to `Doors <time>` (better than nothing — about an hour earlier
+    than the show, but on the right calendar day)."""
+    if not description:
+        return None
+    for pattern in (_DESC_SHOW_RE, _DESC_DOORS_RE):
+        m = pattern.search(description)
+        if m:
+            hour = m.group(1)
+            minute = m.group(2) or "00"
+            ampm = m.group(3).upper()
+            try:
+                return datetime.strptime(
+                    f"{hour}:{minute} {ampm}", "%I:%M %p"
+                ).time()
+            except ValueError:
+                continue
+    return None
+
+
 def _build_start_end(
-    base_dt: datetime, card: Tag
+    base_dt: datetime, card: Tag, description: str | None
 ) -> tuple[datetime, datetime | None, bool]:
+    # Prefer the show time mined from the excerpt — the structured
+    # `event-time-localized-*` fields on Atwood's page are placeholders, not
+    # the real show time. When we use the excerpt time we drop end_at: the
+    # structured end is just nominal-start + 1h and would be just as wrong.
+    desc_time = _show_time_from_description(description)
+    if desc_time is not None:
+        start_at = base_dt.replace(hour=desc_time.hour, minute=desc_time.minute)
+        return start_at, None, False
+
     start_el = card.select_one("time.event-time-localized-start")
     if start_el is None:
         return base_dt, None, True
@@ -161,7 +203,8 @@ def _parse_card(card: Tag) -> RawEvent | None:
 
     source_url = urljoin(_BASE_URL, href)
 
-    start_at, end_at, all_day = _build_start_end(base_dt, card)
+    description = _extract_description(card)
+    start_at, end_at, all_day = _build_start_end(base_dt, card, description)
 
     venue_name, venue_address = _extract_venue(card)
 
@@ -171,7 +214,7 @@ def _parse_card(card: Tag) -> RawEvent | None:
         end_at=end_at,
         venue_name=venue_name,
         venue_address=venue_address,
-        description=_extract_description(card),
+        description=description,
         image_url=_extract_image(card),
         categories=[],
         all_day=all_day,

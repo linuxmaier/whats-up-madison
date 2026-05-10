@@ -315,3 +315,45 @@ def test_lower_priority_source_does_not_overwrite(db):
 
     event = db.query(Event).one()
     assert event.description == "Jackie Venson performs her soulful blend of blues and rock."
+
+
+def test_higher_priority_source_overwrites_start_at(db):
+    # Visit Madison (rank 4) runs first with a wrong time.
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        start_at=datetime(2026, 6, 15, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("Visit Madison", [vm_event], db)
+
+    # High Noon (rank 0) runs second with the right time — must overwrite.
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        start_at=datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    event = db.query(Event).one()
+    assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)
+
+
+def test_lower_priority_source_does_not_overwrite_start_at(db):
+    # High Noon (rank 0) runs first with the right time.
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        start_at=datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    # Visit Madison (rank 4) runs second with a worse time — must not win.
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        start_at=datetime(2026, 6, 15, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    ingest_events("Visit Madison", [vm_event], db)
+
+    event = db.query(Event).one()
+    assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)

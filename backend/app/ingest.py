@@ -18,7 +18,12 @@ SOURCE_PRIORITY = ["High Noon Saloon", "Atwood Music Hall", "Ticketmaster", "Our
 
 # Fields that higher-priority sources may overwrite, not just fill when null.
 # title is included because a trusted venue source often has the canonical event name.
-_OVERWRITABLE_FIELDS = ("title", "description", "end_at", "venue_name", "venue_address", "image_url")
+# start_at and end_at are included so a re-scrape can correct a previously-wrong time
+# (surfaced by Atwood: their structured time fields ship placeholder values, and we
+# initially trusted them — without overwrite the bug data would stick post-fix).
+# canonical_hash keys on the start *date*, not time, so same-day corrections don't
+# break dedup; for cross-date corrections the row would simply be inserted as new.
+_OVERWRITABLE_FIELDS = ("title", "description", "start_at", "end_at", "venue_name", "venue_address", "image_url")
 
 FUZZY_TITLE_THRESHOLD = 0.65  # tuned empirically against the Isthmus + Visit Madison overlap
 

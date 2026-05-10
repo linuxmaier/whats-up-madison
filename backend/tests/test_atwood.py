@@ -9,6 +9,7 @@ from app.scrapers.atwood import (
     _normalize_address,
     _parse_card,
     _parse_time,
+    _show_time_from_description,
     AtwoodMusicHallSource,
 )
 
@@ -76,6 +77,44 @@ class TestNormalizeAddress:
 
 
 # ---------------------------------------------------------------------------
+# _show_time_from_description
+# ---------------------------------------------------------------------------
+
+class TestShowTimeFromDescription:
+    def test_show_pm_no_minutes(self):
+        assert _show_time_from_description("Doors 7PM Show 8PM") == dtime(20, 0)
+
+    def test_show_pm_with_minutes(self):
+        assert _show_time_from_description("Doors 6:30PM Show 7:30PM") == dtime(19, 30)
+
+    def test_show_with_colon(self):
+        assert _show_time_from_description("Doors: 7:00pm / Show: 8:00pm") == dtime(20, 0)
+
+    def test_show_lowercase(self):
+        assert _show_time_from_description("Doors 7pm / Show 8pm") == dtime(20, 0)
+
+    def test_show_with_slash_separator(self):
+        assert _show_time_from_description("Doors 7PM / Show 8PM") == dtime(20, 0)
+
+    def test_late_night_show(self):
+        # The PHISH Aftershow regression case.
+        assert _show_time_from_description("Doors 10PM Show 11PM") == dtime(23, 0)
+
+    def test_doors_fallback_when_no_show(self):
+        assert _show_time_from_description("Doors 6:30PM") == dtime(18, 30)
+
+    def test_show_preferred_over_doors(self):
+        # Show appears second but should still win.
+        assert _show_time_from_description("Doors 6PM Show 7PM") == dtime(19, 0)
+
+    def test_no_match_returns_none(self):
+        assert _show_time_from_description("Tickets at the door") is None
+        assert _show_time_from_description("Seated show. $30 cover.") is None
+        assert _show_time_from_description("") is None
+        assert _show_time_from_description(None) is None
+
+
+# ---------------------------------------------------------------------------
 # _parse_card (integration of helpers against representative HTML)
 # ---------------------------------------------------------------------------
 
@@ -113,8 +152,11 @@ class TestParseCard:
         ev = _parse_card(_card(_FULL_CARD_HTML))
         assert ev is not None
         assert ev.title == "Boogie Down Broadway"
-        assert ev.start_at == datetime(2026, 5, 9, 20, 0, tzinfo=_CENTRAL)
-        assert ev.end_at == datetime(2026, 5, 9, 21, 0, tzinfo=_CENTRAL)
+        # Excerpt's "Show 7PM" wins over the structured 8 PM placeholder.
+        assert ev.start_at == datetime(2026, 5, 9, 19, 0, tzinfo=_CENTRAL)
+        # end_at dropped when we override start with the excerpt time — the
+        # structured end is unreliable when the structured start is unreliable.
+        assert ev.end_at is None
         assert ev.all_day is False
         assert ev.venue_name == "Atwood Music Hall"
         assert ev.venue_address == "1925 Winnebago Avenue Madison, WI 53704"
@@ -134,7 +176,9 @@ class TestParseCard:
         assert ev.venue_name == "Barrymore Theatre"
         assert ev.venue_address == "2090 Atwood Avenue Madison, WI 53704"
 
-    def test_missing_time_falls_back_to_all_day(self):
+    def test_missing_structured_time_recovered_from_description(self):
+        # Structured times absent — description's "Show 7PM" still yields a
+        # real start time. Not all-day.
         html = _FULL_CARD_HTML.replace(
             '<li class="eventlist-meta-item eventlist-meta-time event-meta-item">'
             '\n        <span class="event-time-localized">'
@@ -147,21 +191,78 @@ class TestParseCard:
         )
         ev = _parse_card(_card(html))
         assert ev is not None
+        assert ev.all_day is False
+        assert ev.start_at == datetime(2026, 5, 9, 19, 0, tzinfo=_CENTRAL)
+
+    def test_missing_time_everywhere_falls_back_to_all_day(self):
+        # No structured times AND no Show/Doors in excerpt → all-day at midnight.
+        html = (
+            _FULL_CARD_HTML.replace(
+                '<li class="eventlist-meta-item eventlist-meta-time event-meta-item">'
+                '\n        <span class="event-time-localized">'
+                '\n          <time class="event-time-localized-start" datetime="2026-05-09">8:00 PM</time>'
+                '\n          <span class="event-datetime-divider"></span>'
+                '\n          <time class="event-time-localized-end" datetime="2026-05-09">9:00 PM</time>'
+                '\n        </span>'
+                '\n      </li>',
+                "",
+            )
+            .replace("<p>Doors 6PM Show 7PM</p>", "<p>Free admission</p>")
+        )
+        ev = _parse_card(_card(html))
+        assert ev is not None
         assert ev.all_day is True
         assert ev.start_at == datetime(2026, 5, 9, 0, 0, tzinfo=_CENTRAL)
         assert ev.end_at is None
 
-    def test_end_time_after_midnight(self):
+    def test_end_time_after_midnight_uses_structured_fallback(self):
+        # Strip the Show/Doors line from the excerpt so the structured
+        # times are used (they're authoritative when the excerpt has nothing
+        # to mine).
         html = _FULL_CARD_HTML.replace(
+            "<p>Doors 6PM Show 7PM</p>", "<p>Late night set</p>"
+        ).replace(
             ">8:00 PM<", ">11:00 PM<"
         ).replace(
             ">9:00 PM<", ">1:00 AM<"
         )
         ev = _parse_card(_card(html))
         assert ev is not None
-        # 11 PM May 9 → 1 AM May 10
         assert ev.start_at == datetime(2026, 5, 9, 23, 0, tzinfo=_CENTRAL)
+        # 11 PM May 9 → 1 AM May 10
         assert ev.end_at == datetime(2026, 5, 10, 1, 0, tzinfo=_CENTRAL)
+
+    def test_falls_back_to_structured_when_no_show_in_description(self):
+        # No "Show <time>" in excerpt → structured times win.
+        html = _FULL_CARD_HTML.replace(
+            "<p>Doors 6PM Show 7PM</p>", "<p>Tickets at the door</p>"
+        )
+        ev = _parse_card(_card(html))
+        assert ev is not None
+        assert ev.start_at == datetime(2026, 5, 9, 20, 0, tzinfo=_CENTRAL)
+        assert ev.end_at == datetime(2026, 5, 9, 21, 0, tzinfo=_CENTRAL)
+
+    def test_phish_style_late_show_time(self):
+        # Regression: the production bug — structured 8 PM but description
+        # says "Doors 10PM Show 11PM". Show 11 PM should win.
+        html = _FULL_CARD_HTML.replace(
+            "<p>Doors 6PM Show 7PM</p>", "<p>Doors 10PM Show 11PM</p>"
+        )
+        ev = _parse_card(_card(html))
+        assert ev is not None
+        assert ev.start_at == datetime(2026, 5, 9, 23, 0, tzinfo=_CENTRAL)
+        assert ev.end_at is None
+
+    def test_falls_back_to_doors_when_no_show(self):
+        # Excerpt with only "Doors <time>", no "Show" — Doors wins over
+        # structured (still better than placeholder times).
+        html = _FULL_CARD_HTML.replace(
+            "<p>Doors 6PM Show 7PM</p>", "<p>Doors 7PM</p>"
+        )
+        ev = _parse_card(_card(html))
+        assert ev is not None
+        assert ev.start_at == datetime(2026, 5, 9, 19, 0, tzinfo=_CENTRAL)
+        assert ev.end_at is None
 
     def test_missing_title_skips_card(self):
         html = _FULL_CARD_HTML.replace(
