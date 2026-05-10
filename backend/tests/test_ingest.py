@@ -265,3 +265,53 @@ def test_non_canonical_venue_address_is_left_untouched(db):
 
     event = db.query(Event).one()
     assert event.venue_address == "999 Fake Street, Madison, WI"
+
+
+# ---------------------------------------------------------------------------
+# 9. Source-priority overwrite (#114): higher-trust source overwrites fields
+#    set by a lower-trust source; lower-trust source cannot overwrite back.
+# ---------------------------------------------------------------------------
+
+def test_higher_priority_source_overwrites_description(db):
+    # Visit Madison (rank 4, lowest trust) runs first with a thin description.
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        description="Check out the event website for more information.",
+    )
+    ingest_events("Visit Madison", [vm_event], db)
+
+    event = db.query(Event).one()
+    assert event.description == "Check out the event website for more information."
+
+    # High Noon (rank 0, highest trust) runs second with a richer description.
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        description="Jackie Venson performs her soulful blend of blues and rock.",
+    )
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    db.refresh(event)
+    assert event.description == "Jackie Venson performs her soulful blend of blues and rock."
+
+
+def test_lower_priority_source_does_not_overwrite(db):
+    # High Noon (rank 0) runs first with a good description.
+    hn_event = _raw(
+        source_name="High Noon Saloon",
+        source_url="https://highnoonsaloon.com/event/1",
+        description="Jackie Venson performs her soulful blend of blues and rock.",
+    )
+    ingest_events("High Noon Saloon", [hn_event], db)
+
+    # Visit Madison (rank 4) runs second with a worse description — must not win.
+    vm_event = _raw(
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/1",
+        description="Check out the event website for more information.",
+    )
+    ingest_events("Visit Madison", [vm_event], db)
+
+    event = db.query(Event).one()
+    assert event.description == "Jackie Venson performs her soulful blend of blues and rock."

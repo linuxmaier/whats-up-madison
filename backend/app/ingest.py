@@ -12,7 +12,14 @@ from app.scrapers.base import RawEvent
 
 logger = logging.getLogger(__name__)
 
-_FILLABLE_FIELDS = ("description", "end_at", "venue_name", "venue_address", "image_url")
+# Trust ranking for event sources — lower index = higher trust.
+# Mirrors SOURCE_PRIORITY in frontend/src/lib/sources.js; keep in sync when adding scrapers.
+SOURCE_PRIORITY = ["High Noon Saloon", "Ticketmaster", "Our Lives", "Isthmus", "Visit Madison"]
+
+# Fields that higher-priority sources may overwrite, not just fill when null.
+# title is included because a trusted venue source often has the canonical event name.
+_OVERWRITABLE_FIELDS = ("title", "description", "end_at", "venue_name", "venue_address", "image_url")
+
 FUZZY_TITLE_THRESHOLD = 0.65  # tuned empirically against the Isthmus + Visit Madison overlap
 
 
@@ -61,9 +68,15 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
             inserted += 1
         else:
             changed = False
-            for field in _FILLABLE_FIELDS:
-                if getattr(event, field) is None and getattr(raw, field) is not None:
-                    setattr(event, field, getattr(raw, field))
+            incoming_rank = _source_rank(source_name)
+            existing_rank = _best_existing_rank(event, db)
+            is_higher_priority = incoming_rank < existing_rank
+            for field in _OVERWRITABLE_FIELDS:
+                raw_val = getattr(raw, field)
+                if raw_val is None:
+                    continue
+                if getattr(event, field) is None or is_higher_priority:
+                    setattr(event, field, raw_val)
                     changed = True
             if raw.categories:
                 existing = list(event.categories or [])
@@ -187,6 +200,20 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
         )
         return best
     return None
+
+
+def _source_rank(source_name: str) -> int:
+    try:
+        return SOURCE_PRIORITY.index(source_name)
+    except ValueError:
+        return len(SOURCE_PRIORITY)
+
+
+def _best_existing_rank(event: Event, db: Session) -> float:
+    rows = db.query(EventSource).filter_by(event_id=event.id, is_active=True).all()
+    if not rows:
+        return float("inf")
+    return min(_source_rank(r.source_name) for r in rows)
 
 
 def _apply_canonical_address(event: Event) -> None:

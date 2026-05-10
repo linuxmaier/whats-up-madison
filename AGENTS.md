@@ -77,7 +77,7 @@ All scrapers share `ingest_events(source_name, raw_events, db)`. It handles:
 - **Pre-dedup** — collapses multiple raws sharing a `canonical_hash` from the same run before insert (a source can return e.g. two recurring "Volunteer at Foodbank" series with different IDs but identical title/date/venue); categories are unioned across the duplicates
 - **Upsert** by `canonical_hash` — inserts new events, skips exact duplicates
 - **Fuzzy dedup** — after an exact hash miss, a secondary search matches candidates by time+venue and scores title similarity via `difflib.SequenceMatcher`; events scoring ≥ `FUZZY_TITLE_THRESHOLD` (0.65) are treated as duplicates and merged rather than inserted as new rows; this catches near-identical events listed under slightly different titles by different sources
-- **Fill-in-nulls** — adds missing scalar fields from later sources; never overwrites set values
+- **Source-priority merge** — when a later source has higher trust rank (per `SOURCE_PRIORITY` in `ingest.py`, mirroring the frontend list), it overwrites all non-null `_OVERWRITABLE_FIELDS` (title, description, end_at, venue_name, venue_address, image_url); equal- or lower-priority sources only fill null fields
 - **Category union** — `RawEvent.categories` are merged into `Event.categories` preserving order, no duplicates; later sources can enrich an earlier one
 - **Multi-source** — one `EventSource` row per (event, source); same event from two scrapers gets two `EventSource` rows, both linked to the same `Event`
 - **Staleness** — after each run, deactivates `EventSource` rows from that scraper not seen in the run; marks `Event.status = 'removed'` when no active sources remain
@@ -132,7 +132,7 @@ Scrapers don't need to do anything special — populating `RawEvent.venue_addres
 A small allowlist of well-known Madison venues (High Noon Saloon, The Sylvee, Majestic, Orpheum, Barrymore, Overture Center) maps `venue_name` → known-good `(latitude, longitude, address)`. Two consumers use it:
 
 - `geocode_event` consults the registry **before** the cache or Nominatim — short-circuits the network call entirely, immune to upstream address quirks, and corrects already-bad coordinates on the next geocode pass.
-- `ingest_events` overwrites `Event.venue_address` with the canonical address when `venue_name` matches, regardless of `_FILLABLE_FIELDS` semantics. This was added because Visit Madison sometimes ships malformed addresses (e.g. `701A E Washington Ave` for High Noon) that snap to wrong coordinates and clutter the displayed address card.
+- `ingest_events` overwrites `Event.venue_address` with the canonical address when `venue_name` matches, regardless of source-priority merge semantics. This was added because Visit Madison sometimes ships malformed addresses (e.g. `701A E Washington Ave` for High Noon) that snap to wrong coordinates and clutter the displayed address card.
 
 To add a venue: lowercase the name as it appears in `Event.venue_name`, curl Nominatim with the canonical address to get verified coordinates, then add an entry. Add alt spellings (e.g. "orpheum theater" vs "orpheum theatre") as separate keys — matching is exact after lowercase + trim.
 
