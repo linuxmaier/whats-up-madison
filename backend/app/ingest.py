@@ -76,12 +76,39 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
             incoming_rank = _source_rank(source_name)
             existing_rank = _best_existing_rank(event, db)
             is_higher_priority = incoming_rank < existing_rank
+            # Same-source re-runs overwrite their own previous contributions —
+            # if the scrape output changed, treat that as the venue having
+            # updated the data (reschedules, description edits, image swaps,
+            # room moves, etc.). Only allowed when no strictly-higher-priority
+            # source has weighed in: equal rank + an existing link from this
+            # source means we ARE the top contributor on this row.
+            is_self_rerun_at_top = (
+                incoming_rank == existing_rank
+                and db.query(EventSource.id)
+                .filter_by(event_id=event.id, source_name=source_name)
+                .first()
+                is not None
+            )
             for field in _OVERWRITABLE_FIELDS:
                 raw_val = getattr(raw, field)
                 if raw_val is None:
                     continue
-                if getattr(event, field) is None or is_higher_priority:
+                if (
+                    getattr(event, field) is None
+                    or is_higher_priority
+                    or is_self_rerun_at_top
+                ):
                     setattr(event, field, raw_val)
+                    changed = True
+            # start_at and end_at are a coupled pair — `end_at` is only
+            # meaningful relative to `start_at`. When an authoritative source
+            # overwrites `start_at`, its view of `end_at` (even None) replaces
+            # any prior `end_at`, since the prior end was anchored to a
+            # now-stale start. (For other fields None is treated as
+            # "no opinion" so cross-source merging keeps lower-source values.)
+            if is_higher_priority or is_self_rerun_at_top:
+                if event.end_at != raw.end_at:
+                    event.end_at = raw.end_at
                     changed = True
             if raw.categories:
                 existing = list(event.categories or [])
