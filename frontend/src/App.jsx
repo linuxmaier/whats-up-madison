@@ -7,6 +7,8 @@ import CategoryFilter from './components/CategoryFilter'
 import VenueFilter from './components/VenueFilter'
 import MapView from './components/MapView'
 import FeedbackModal from './components/FeedbackModal'
+import SearchBar from './components/SearchBar'
+import SearchResults from './components/SearchResults'
 import { partitionEvents } from './lib/eventTime'
 import {
   filterEvents,
@@ -55,6 +57,13 @@ export default function App() {
   const [hiddenVenues, setHiddenVenues] = useState(loadHiddenVenues)
   const [viewMode, setViewMode] = useState(loadViewMode)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState(null)
+
+  const trimmedQuery = searchQuery.trim()
+  const isSearching = trimmedQuery.length > 0
 
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
@@ -92,6 +101,38 @@ export default function App() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [selectedDate])
+
+  useEffect(() => {
+    if (!isSearching) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSearchResults([])
+      setSearchError(null)
+      setSearchLoading(false)
+      return
+    }
+    setSearchLoading(true)
+    setSearchError(null)
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      fetch(`${API_BASE}/events/search?q=${encodeURIComponent(trimmedQuery)}`, {
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        })
+        .then((data) => setSearchResults(data))
+        .catch((err) => {
+          if (err.name === 'AbortError') return
+          setSearchError(err.message)
+        })
+        .finally(() => setSearchLoading(false))
+    }, 250)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [isSearching, trimmedQuery])
 
   useEffect(() => {
     saveFilterState(filter)
@@ -140,34 +181,41 @@ export default function App() {
             What's Up Madison
           </button>
           <div className="flex flex-wrap justify-center sm:flex-nowrap sm:justify-start items-center gap-2">
-            <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`px-3 py-1 cursor-pointer ${viewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
-                List
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('map')}
-                className={`px-3 py-1 cursor-pointer ${viewMode === 'map' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-              >
-                Map
-              </button>
-            </div>
+            <SearchBar value={searchQuery} onChange={setSearchQuery} />
+            {!isSearching && (
+              <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`px-3 py-1 cursor-pointer ${viewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                >
+                  List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('map')}
+                  className={`px-3 py-1 cursor-pointer ${viewMode === 'map' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                >
+                  Map
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2">
-              <CategoryFilter
-                selected={filter.selected}
-                includeUncategorized={filter.includeUncategorized}
-                onChange={setFilter}
-              />
-              <VenueFilter
-                allVenues={allVenues}
-                hiddenVenues={hiddenVenues}
-                onChange={setHiddenVenues}
-              />
-              <DatePicker value={selectedDate} onChange={setSelectedDate} />
+              {!isSearching && (
+                <>
+                  <CategoryFilter
+                    selected={filter.selected}
+                    includeUncategorized={filter.includeUncategorized}
+                    onChange={setFilter}
+                  />
+                  <VenueFilter
+                    allVenues={allVenues}
+                    hiddenVenues={hiddenVenues}
+                    onChange={setHiddenVenues}
+                  />
+                  <DatePicker value={selectedDate} onChange={setSelectedDate} />
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -175,45 +223,57 @@ export default function App() {
 
       <div className="max-w-7xl mx-auto px-4 pt-4 pb-6">
         <div>
-          {loading && <p className="text-gray-400 text-sm">Loading…</p>}
-          {error && <p className="text-red-500 text-sm">Error: {error}</p>}
-          {!loading && !error && events.length === 0 && (
-            <p className="text-gray-400 text-sm">No events found for this date.</p>
-          )}
-          {!loading && !error && events.length > 0 && filteredEvents.length === 0 && (
-            <p className="text-gray-400 text-sm">
-              All {events.length} events for this date are hidden by your filter.
-            </p>
-          )}
-          {!loading && !error && filteredEvents.length > 0 && (
+          {isSearching ? (
+            <SearchResults
+              query={trimmedQuery}
+              events={searchResults}
+              loading={searchLoading}
+              error={searchError}
+              stickyTop={headerH}
+            />
+          ) : (
             <>
-              <p className="text-gray-500 text-xs mb-2">
-                {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
-                {filteredEvents.length !== events.length && (
-                  <span className="text-gray-400"> of {events.length}</span>
-                )}
-              </p>
-              {viewMode === 'list' ? (
+              {loading && <p className="text-gray-400 text-sm">Loading…</p>}
+              {error && <p className="text-red-500 text-sm">Error: {error}</p>}
+              {!loading && !error && events.length === 0 && (
+                <p className="text-gray-400 text-sm">No events found for this date.</p>
+              )}
+              {!loading && !error && events.length > 0 && filteredEvents.length === 0 && (
+                <p className="text-gray-400 text-sm">
+                  All {events.length} events for this date are hidden by your filter.
+                </p>
+              )}
+              {!loading && !error && filteredEvents.length > 0 && (
                 <>
-                  <DensityRail
-                    ref={setRailEl}
-                    stickyTop={headerH}
-                    hourCounts={partition.hourCounts}
-                    onJumpToHour={handleJumpToHour}
-                  />
-                  <AllDayStrip events={partition.allday} stickyTop={headerH + railH} />
-                  {BUCKETS.map((b) => (
-                    <BucketSection
-                      key={b.id}
-                      id={b.id}
-                      label={b.label}
-                      events={partition[b.id]}
-                      stickyTop={headerH + railH}
-                    />
-                  ))}
+                  <p className="text-gray-500 text-xs mb-2">
+                    {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
+                    {filteredEvents.length !== events.length && (
+                      <span className="text-gray-400"> of {events.length}</span>
+                    )}
+                  </p>
+                  {viewMode === 'list' ? (
+                    <>
+                      <DensityRail
+                        ref={setRailEl}
+                        stickyTop={headerH}
+                        hourCounts={partition.hourCounts}
+                        onJumpToHour={handleJumpToHour}
+                      />
+                      <AllDayStrip events={partition.allday} stickyTop={headerH + railH} />
+                      {BUCKETS.map((b) => (
+                        <BucketSection
+                          key={b.id}
+                          id={b.id}
+                          label={b.label}
+                          events={partition[b.id]}
+                          stickyTop={headerH + railH}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    <MapView events={filteredEvents} stickyTop={headerH} />
+                  )}
                 </>
-              ) : (
-                <MapView events={filteredEvents} stickyTop={headerH} />
               )}
             </>
           )}
