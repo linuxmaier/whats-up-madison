@@ -68,8 +68,10 @@ export default function App() {
 
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
+  const [footerEl, setFooterEl] = useState(null)
   const [headerH, setHeaderH] = useState(0)
   const [railH, setRailH] = useState(0)
+  const [footerH, setFooterH] = useState(0)
 
   useLayoutEffect(() => {
     const el = headerRef.current
@@ -88,6 +90,19 @@ export default function App() {
     ro.observe(railEl)
     return () => ro.disconnect()
   }, [railEl])
+
+  useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!footerEl) { setFooterH(0); return }
+    const measure = () => {
+      const mt = parseInt(window.getComputedStyle(footerEl).marginTop) || 0
+      setFooterH(footerEl.offsetHeight + mt)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(footerEl)
+    return () => ro.disconnect()
+  }, [footerEl])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -274,7 +289,7 @@ export default function App() {
                       ))}
                     </>
                   ) : (
-                    <MapView events={filteredEvents} stickyTop={headerH} />
+                    <MapView events={filteredEvents} stickyTop={headerH} bottomPad={footerH} />
                   )}
                 </>
               )}
@@ -283,28 +298,26 @@ export default function App() {
         </div>
       </div>
 
-      {!isMapMode && (
-        <footer className="border-t border-gray-200 mt-4">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 text-xs text-gray-400">
-            <a
-              href="https://github.com/linuxmaier/whats-up-madison"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-gray-600 transition-colors"
-            >
-              Open source
-            </a>
-            <span aria-hidden="true">·</span>
-            <button
-              type="button"
-              className="hover:text-gray-600 transition-colors cursor-pointer"
-              onClick={() => setFeedbackOpen(true)}
-            >
-              Submit feedback
-            </button>
-          </div>
-        </footer>
-      )}
+      <footer ref={setFooterEl} className="border-t border-gray-200 mt-4">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 text-xs text-gray-400">
+          <a
+            href="https://github.com/linuxmaier/whats-up-madison"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-gray-600 transition-colors"
+          >
+            Open source
+          </a>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            className="hover:text-gray-600 transition-colors cursor-pointer"
+            onClick={() => setFeedbackOpen(true)}
+          >
+            Submit feedback
+          </button>
+        </div>
+      </footer>
 
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>

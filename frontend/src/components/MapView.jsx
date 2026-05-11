@@ -65,7 +65,7 @@ function makeBadgeIcon(count) {
   })
 }
 
-export default function MapView({ events, stickyTop = 0 }) {
+export default function MapView({ events, stickyTop = 0, bottomPad = 0 }) {
   const [activeEvent, setActiveEvent] = useState(null)
   const [showNoLoc, setShowNoLoc] = useState(false)
 
@@ -75,7 +75,7 @@ export default function MapView({ events, stickyTop = 0 }) {
     [events]
   )
 
-  const mapHeight = `calc(100vh - ${stickyTop + 32}px)`
+  const mapHeight = `calc(100vh - ${stickyTop + 32 + bottomPad}px)`
 
   return (
     <div className="mt-4">
