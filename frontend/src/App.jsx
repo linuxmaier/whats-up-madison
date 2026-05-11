@@ -68,10 +68,8 @@ export default function App() {
 
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
-  const [footerEl, setFooterEl] = useState(null)
   const [headerH, setHeaderH] = useState(0)
   const [railH, setRailH] = useState(0)
-  const [footerH, setFooterH] = useState(0)
 
   useLayoutEffect(() => {
     const el = headerRef.current
@@ -90,19 +88,6 @@ export default function App() {
     ro.observe(railEl)
     return () => ro.disconnect()
   }, [railEl])
-
-  useLayoutEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!footerEl) { setFooterH(0); return }
-    const measure = () => {
-      const mt = parseInt(window.getComputedStyle(footerEl).marginTop) || 0
-      setFooterH(footerEl.offsetHeight + mt)
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(footerEl)
-    return () => ro.disconnect()
-  }, [footerEl])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -186,7 +171,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={isMapMode ? 'h-screen flex flex-col overflow-hidden bg-gray-50' : 'min-h-screen bg-gray-50'}>
       <div ref={headerRef} className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col items-center gap-y-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <button
@@ -237,8 +222,8 @@ export default function App() {
         </div>
       </div>
 
-      <div className={`max-w-7xl mx-auto px-4 pt-4 ${isMapMode ? '' : 'pb-6'}`}>
-        <div>
+      <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col max-w-7xl mx-auto px-4 pt-4' : 'max-w-7xl mx-auto px-4 pt-4 pb-6'}>
+        <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col' : ''}>
           {isSearching ? (
             <SearchResults
               query={trimmedQuery}
@@ -289,7 +274,7 @@ export default function App() {
                       ))}
                     </>
                   ) : (
-                    <MapView events={filteredEvents} stickyTop={headerH} bottomPad={footerH} />
+                    <MapView events={filteredEvents} stickyTop={headerH} fillHeight />
                   )}
                 </>
               )}
@@ -298,7 +283,7 @@ export default function App() {
         </div>
       </div>
 
-      <footer ref={setFooterEl} className="border-t border-gray-200 mt-4">
+      <footer className="border-t border-gray-200 mt-4">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 text-xs text-gray-400">
           <a
             href="https://github.com/linuxmaier/whats-up-madison"
