@@ -64,6 +64,7 @@ export default function App() {
 
   const trimmedQuery = searchQuery.trim()
   const isSearching = trimmedQuery.length > 0
+  const isMapMode = viewMode === 'map' && !isSearching
 
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
@@ -221,7 +222,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 pt-4 pb-6">
+      <div className={`max-w-7xl mx-auto px-4 pt-4 ${isMapMode ? '' : 'pb-6'}`}>
         <div>
           {isSearching ? (
             <SearchResults
@@ -245,12 +246,14 @@ export default function App() {
               )}
               {!loading && !error && filteredEvents.length > 0 && (
                 <>
-                  <p className="text-gray-500 text-xs mb-2">
-                    {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
-                    {filteredEvents.length !== events.length && (
-                      <span className="text-gray-400"> of {events.length}</span>
-                    )}
-                  </p>
+                  {!isMapMode && (
+                    <p className="text-gray-500 text-xs mb-2">
+                      {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
+                      {filteredEvents.length !== events.length && (
+                        <span className="text-gray-400"> of {events.length}</span>
+                      )}
+                    </p>
+                  )}
                   {viewMode === 'list' ? (
                     <>
                       <DensityRail
@@ -280,26 +283,28 @@ export default function App() {
         </div>
       </div>
 
-      <footer className="border-t border-gray-200 mt-4">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 text-xs text-gray-400">
-          <a
-            href="https://github.com/linuxmaier/whats-up-madison"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-gray-600 transition-colors"
-          >
-            Open source
-          </a>
-          <span aria-hidden="true">·</span>
-          <button
-            type="button"
-            className="hover:text-gray-600 transition-colors cursor-pointer"
-            onClick={() => setFeedbackOpen(true)}
-          >
-            Submit feedback
-          </button>
-        </div>
-      </footer>
+      {!isMapMode && (
+        <footer className="border-t border-gray-200 mt-4">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 text-xs text-gray-400">
+            <a
+              href="https://github.com/linuxmaier/whats-up-madison"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-600 transition-colors"
+            >
+              Open source
+            </a>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              className="hover:text-gray-600 transition-colors cursor-pointer"
+              onClick={() => setFeedbackOpen(true)}
+            >
+              Submit feedback
+            </button>
+          </div>
+        </footer>
+      )}
 
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
