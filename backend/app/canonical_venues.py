@@ -49,6 +49,34 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "overture center for the arts": CanonicalVenue(
         43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
     ),
+    # Sub-rooms physically inside Overture Center. The Overture scraper
+    # leaves the room name on venue_name (so it dedups cleanly with
+    # Ticketmaster's per-room values) and relies on this registry to
+    # keep geocoding and the displayed address pointing at the building.
+    "overture hall": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
+    "capitol theater": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
+    "capitol theater stage": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
+    "promenade hall": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
+    "promenade lobby": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
+    "rotunda stage": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
+    "the playhouse": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
+    "james watrous gallery": CanonicalVenue(
+        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
+    ),
 }
 
 
