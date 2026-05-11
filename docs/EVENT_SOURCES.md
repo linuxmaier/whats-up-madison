@@ -141,9 +141,9 @@ Direct sources, generally worth their own scraper for completeness and richer da
 
 ### Overture Center for the Arts
 - URL: https://www.overture.org/tickets-events/upcoming-events/
-- Scraper type prospect: html
-- Status: **investigating**
-- Notes: Seven venues, ~200 performances/year. Houses 10 resident companies (Madison Symphony, Madison Opera, Madison Ballet, Forward Theater, etc.) — scraping Overture should cover most of those companies' events, avoiding the need for individual scrapers.
+- Scraper type: html
+- Status: **integrated**
+- Notes: Seven sub-rooms, ~200 performances/year. Hosts ten resident companies (Madison Symphony, Madison Opera, Madison Ballet, Forward Theater, Children's Theater of Madison, Wisconsin Chamber Orchestra, Kanopy Dance, Duck Soup Cinema, etc.); the upcoming-events page lists Overture-presented and resident-company shows together with no need for individual scrapers per company. Two unusual quirks: (1) `overture.org` is fronted by a TLS-fingerprint WAF (Imperva) that 403s `httpx`/`requests`/plain `curl` regardless of headers — we use `curl_cffi` with `impersonate="chrome"` to clear it; (2) the page itself does a Tessitura "shared session" handshake — the first GET returns a 1KB stub with a hidden form (`EncryptedPayload.Value` + `ReturnUrl`) that JS auto-submits to `/login/receive`, and only the second response contains the real ~240KB events page. The scraper replicates that POST. The full ~15-month list (~75 events) renders server-side in one shot — no pagination, no XHR. Year is implicit on cards ("May 10" / "May 10 - May 17"); the chronological-walk pass increments year whenever month/day regresses. Cards display the room (Capitol Theater, Promenade Hall, Overture Hall, etc.); we leave the room as `venue_name` so dedup with Ticketmaster's per-room values stays clean, and add the seven internal rooms to `canonical_venues` so geocoding short-circuits to 201 State St. External venues (MYArts Starlight Theater, Bethel Lutheran Church, etc.) keep their literal name and rely on Nominatim. Conservative category mapping: `Music`/`Classical Music`/`Jazz` → `Music`; `Comedy` → `Open Mic & Comedy`; `Theater`/`Musical Theater`/`Broadway`/`Dance` → `Theater & Stage`; `Educational/Talks` → `Talks & Learning`; `Family Friendly` → `Family & Kids`. Season packages (`2025/26 Season`), company names (`Madison Symphony Orchestra`), audience tags (`Free Events`), `Cabaret`, `Variety`, `Fringe Festival`, `Film`, `Add-on Event` and similar admin/ambiguous tags are dropped so the LLM tagger handles them.
 
 ---
 

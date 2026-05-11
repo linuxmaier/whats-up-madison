@@ -19,6 +19,7 @@ from app.scrapers.atwood import AtwoodMusicHallSource
 from app.scrapers.high_noon import HighNoonSource
 from app.scrapers.isthmus import IsthmusSource
 from app.scrapers.our_lives import OurLivesSource
+from app.scrapers.overture import OvertureSource
 from app.scrapers.ticketmaster import TicketmasterSource
 from app.scrapers.visit_madison import VisitMadisonSource
 from app.tagger import tag_untagged_events
@@ -79,6 +80,7 @@ SCRAPERS = [
     OurLivesSource(),
     TicketmasterSource(),
     AtwoodMusicHallSource(),
+    OvertureSource(),
 ]
 
 
