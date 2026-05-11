@@ -3,16 +3,19 @@ from datetime import date, datetime, time as dtime
 
 from bs4 import BeautifulSoup
 
+from app.scrapers.base import RawEvent
 from app.scrapers.overture import (
     _CENTRAL,
     _DEFAULT_VENUE_NAME,
     _SOURCE_NAME,
+    _expand_with_schedule,
     _extract_date_pair,
     _extract_session_form,
     _map_categories,
     _normalize_venue,
     _parse_card,
     _parse_cards,
+    _parse_schedule,
     _parse_span,
     _parse_time,
     OvertureSource,
@@ -424,7 +427,153 @@ class TestExtractSessionForm:
 
 
 # ---------------------------------------------------------------------------
-# Page-level: fetch() with the HTML fetch mocked out
+# _parse_schedule: detail-page ticketing block
+# ---------------------------------------------------------------------------
+
+_SCHEDULE_HTML = """
+<ul class="pdp-tickets-list">
+  <li class="pdp-tickets-item">
+    <div class="pdp-tickets-item-info">
+      <p class="tickets-date h4-style">Tue, May 12, 2026</p>
+      <div class="pdp-tickets-item-info-details">
+        <p class="tickets-time h4-style light">7:30 PM</p>
+      </div>
+    </div>
+  </li>
+  <li class="pdp-tickets-item">
+    <div class="pdp-tickets-item-info">
+      <p class="tickets-date h4-style">Sat, May 16, 2026</p>
+      <p class="tickets-time h4-style light">2:00 PM</p>
+    </div>
+  </li>
+  <li class="pdp-tickets-item">
+    <div class="pdp-tickets-item-info">
+      <p class="tickets-date h4-style">Sat, May 16, 2026</p>
+      <p class="tickets-time h4-style light">7:30 PM</p>
+    </div>
+  </li>
+  <!-- Duplicate of the first entry (Overture occasionally lists the
+       same performance twice for accessibility variants) — must be
+       collapsed by the dedup logic. -->
+  <li class="pdp-tickets-item">
+    <div class="pdp-tickets-item-info">
+      <p class="tickets-date h4-style">Tue, May 12, 2026</p>
+      <p class="tickets-time h4-style light">7:30 PM</p>
+    </div>
+  </li>
+</ul>
+"""
+
+
+class TestParseSchedule:
+    def test_extracts_unique_performances_sorted(self):
+        sched = _parse_schedule(_SCHEDULE_HTML)
+        # The Tue duplicate should be collapsed; Sat 2 PM should sort
+        # before Sat 7:30 PM (both kept since matinee + evening are
+        # distinct performances at the schedule level — the per-day
+        # collapsing happens later in _expand_with_schedule).
+        assert sched == [
+            (date(2026, 5, 12), dtime(19, 30)),
+            (date(2026, 5, 16), dtime(14, 0)),
+            (date(2026, 5, 16), dtime(19, 30)),
+        ]
+
+    def test_no_block_returns_empty(self):
+        assert _parse_schedule("<html><body>No ticketing here</body></html>") == []
+
+    def test_missing_time_treated_as_none(self):
+        html = """<ul class="pdp-tickets-list"><li class="pdp-tickets-item">
+            <p class="tickets-date h4-style">Mon, June 1, 2026</p>
+        </li></ul>"""
+        assert _parse_schedule(html) == [(date(2026, 6, 1), None)]
+
+    def test_garbage_date_skipped(self):
+        html = """<ul class="pdp-tickets-list">
+          <li class="pdp-tickets-item"><p class="tickets-date">not a date</p></li>
+          <li class="pdp-tickets-item">
+            <p class="tickets-date">Mon, June 1, 2026</p>
+            <p class="tickets-time">8:00 PM</p>
+          </li>
+        </ul>"""
+        assert _parse_schedule(html) == [(date(2026, 6, 1), dtime(20, 0))]
+
+
+# ---------------------------------------------------------------------------
+# _expand_with_schedule: per-performance event emission
+# ---------------------------------------------------------------------------
+
+def _base_event(title: str = "Test", source_url: str = "https://example.com/e") -> RawEvent:
+    return RawEvent(
+        title=title,
+        start_at=datetime(2026, 5, 12, 0, 0, tzinfo=_CENTRAL),
+        end_at=datetime(2026, 5, 17, 23, 59, tzinfo=_CENTRAL),
+        venue_name=_DEFAULT_VENUE_NAME,
+        venue_address=None,
+        description="A multi-day run.",
+        image_url=None,
+        categories=["Theater & Stage"],
+        all_day=True,
+        source_name=_SOURCE_NAME,
+        source_url=source_url,
+    )
+
+
+class TestExpandWithSchedule:
+    def test_empty_schedule_keeps_base(self):
+        base = _base_event()
+        assert _expand_with_schedule(base, []) == [base]
+
+    def test_one_performance_per_day(self):
+        # Tue 7:30, Wed 7:30, Thu 7:30 — three distinct dates, one
+        # performance each → three RawEvents, all with real times,
+        # all_day=False, end_at=None.
+        schedule = [
+            (date(2026, 5, 12), dtime(19, 30)),
+            (date(2026, 5, 13), dtime(19, 30)),
+            (date(2026, 5, 14), dtime(19, 30)),
+        ]
+        events = _expand_with_schedule(_base_event(), schedule)
+        assert len(events) == 3
+        for ev in events:
+            assert ev.all_day is False
+            assert ev.end_at is None
+            assert ev.start_at.hour == 19 and ev.start_at.minute == 30
+        assert [e.start_at.date() for e in events] == [
+            date(2026, 5, 12), date(2026, 5, 13), date(2026, 5, 14),
+        ]
+
+    def test_same_day_keeps_latest_time(self):
+        # Sat matinee + evening → keep only the 7:30 PM evening.
+        schedule = [
+            (date(2026, 5, 16), dtime(14, 0)),
+            (date(2026, 5, 16), dtime(19, 30)),
+        ]
+        events = _expand_with_schedule(_base_event(), schedule)
+        assert len(events) == 1
+        assert events[0].start_at == datetime(2026, 5, 16, 19, 30, tzinfo=_CENTRAL)
+
+    def test_missing_time_falls_back_to_all_day(self):
+        schedule = [(date(2026, 5, 12), None)]
+        events = _expand_with_schedule(_base_event(), schedule)
+        assert len(events) == 1
+        assert events[0].all_day is True
+        assert events[0].start_at == datetime(2026, 5, 12, 0, 0, tzinfo=_CENTRAL)
+
+    def test_preserves_other_fields(self):
+        base = _base_event(title="Hadestown")
+        schedule = [(date(2026, 5, 12), dtime(19, 30))]
+        ev = _expand_with_schedule(base, schedule)[0]
+        # All non-time fields should be carried over from the base.
+        assert ev.title == "Hadestown"
+        assert ev.venue_name == base.venue_name
+        assert ev.categories == base.categories
+        assert ev.source_url == base.source_url
+        assert ev.description == base.description
+        assert ev.image_url == base.image_url
+
+
+# ---------------------------------------------------------------------------
+# Page-level: fetch() with both listing + detail fetches mocked out
 # ---------------------------------------------------------------------------
 
 _PAGE_HTML = (
@@ -435,36 +584,100 @@ _PAGE_HTML = (
     + "</ul></body></html>"
 )
 
+# Detail page for "Long Run" — three performances Nov 24, 25, 29.
+_LONG_RUN_DETAIL_HTML = """
+<ul class="pdp-tickets-list">
+  <li class="pdp-tickets-item">
+    <p class="tickets-date">Tue, November 24, 2026</p>
+    <p class="tickets-time">7:30 PM</p>
+  </li>
+  <li class="pdp-tickets-item">
+    <p class="tickets-date">Wed, November 25, 2026</p>
+    <p class="tickets-time">7:30 PM</p>
+  </li>
+  <li class="pdp-tickets-item">
+    <p class="tickets-date">Sun, November 29, 2026</p>
+    <p class="tickets-time">2:00 PM</p>
+  </li>
+</ul>
+"""
+
+
+def _pin_datetime(monkeypatch, year=2026, month=5, day=10):
+    """Pin `datetime.now(...)` inside the scraper module so year
+    inference is deterministic."""
+    import app.scrapers.overture as ov_mod
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(year, month, day, tzinfo=tz)
+
+    monkeypatch.setattr(ov_mod, "datetime", _FixedDateTime)
+
 
 class TestFetchPageLevel:
     def test_fetch_parses_full_page(self, monkeypatch):
-        """Bypass the curl_cffi network handshake and feed the parser
-        canned HTML; verify the full fetch() pipeline produces the
-        expected RawEvents."""
+        """Bypass curl_cffi network. Detail fetches are counted so we
+        can verify that only multi-day / "Multiple Showtimes" events
+        trigger enrichment, and the Long Run gets expanded into per-day
+        events with real times."""
         monkeypatch.setattr(
-            "app.scrapers.overture._fetch_events_html", lambda: _PAGE_HTML,
+            "app.scrapers.overture._fetch_listing",
+            lambda: (object(), _PAGE_HTML),
         )
-        # Pin "today" so year inference is deterministic.
-        import app.scrapers.overture as ov_mod
+        fetch_calls: list[str] = []
 
-        class _FixedDateTime(datetime):
-            @classmethod
-            def now(cls, tz=None):
-                return datetime(2026, 5, 10, tzinfo=tz)
+        def _fake_detail(_session, url):
+            fetch_calls.append(url)
+            return _LONG_RUN_DETAIL_HTML
 
-        monkeypatch.setattr(ov_mod, "datetime", _FixedDateTime)
+        monkeypatch.setattr(
+            "app.scrapers.overture._fetch_detail_html", _fake_detail,
+        )
+        _pin_datetime(monkeypatch)
+
+        events = OvertureSource().fetch()
+
+        # Only the multi-day Long Run triggers detail-page enrichment;
+        # the single-day specific-time cards skip the fetch entirely.
+        assert len(fetch_calls) == 1
+
+        titles = [e.title for e in events]
+        assert titles[0] == "First Event"
+        assert titles[1] == "Second Event"
+        assert titles[2:] == ["Long Run", "Long Run", "Long Run"]
+        long_runs = events[2:]
+        assert [e.start_at.date() for e in long_runs] == [
+            date(2026, 11, 24), date(2026, 11, 25), date(2026, 11, 29),
+        ]
+        assert all(e.all_day is False for e in long_runs)
+        assert all(e.end_at is None for e in long_runs)
+        assert events[0].start_at == datetime(2026, 5, 10, 19, 30, tzinfo=_CENTRAL)
+        assert events[1].venue_name == "Bethel Lutheran Church"
+
+    def test_fetch_falls_back_to_base_on_empty_detail(self, monkeypatch):
+        """When the detail-page fetch returns an empty body (Imperva
+        block, 5xx, etc.) the base list-card event is kept as-is."""
+        monkeypatch.setattr(
+            "app.scrapers.overture._fetch_listing",
+            lambda: (object(), _PAGE_HTML),
+        )
+        monkeypatch.setattr(
+            "app.scrapers.overture._fetch_detail_html",
+            lambda _s, _u: "",
+        )
+        _pin_datetime(monkeypatch)
 
         events = OvertureSource().fetch()
         assert [e.title for e in events] == ["First Event", "Second Event", "Long Run"]
-        assert events[0].start_at == datetime(2026, 5, 10, 19, 30, tzinfo=_CENTRAL)
-        assert events[0].venue_name == _DEFAULT_VENUE_NAME  # Capitol Theater normalized
-        assert events[1].venue_name == "Bethel Lutheran Church"
-        assert events[2].all_day is True
-        assert events[2].end_at == datetime(2026, 11, 29, 23, 59, tzinfo=_CENTRAL)
+        long_run = events[2]
+        assert long_run.all_day is True
+        assert long_run.end_at == datetime(2026, 11, 29, 23, 59, tzinfo=_CENTRAL)
 
-    def test_fetch_empty_page_returns_empty_list(self, monkeypatch):
+    def test_fetch_empty_listing_returns_empty_list(self, monkeypatch):
         monkeypatch.setattr(
-            "app.scrapers.overture._fetch_events_html",
-            lambda: "<html><body>no cards here</body></html>",
+            "app.scrapers.overture._fetch_listing",
+            lambda: (None, ""),
         )
         assert OvertureSource().fetch() == []

@@ -8,25 +8,39 @@ public ``/tickets-events/upcoming-events/`` page server-renders all
 upcoming events for both Overture-presented and resident-company shows
 on a single ~15-month chronological list (no pagination, no XHR).
 
-Two quirks that make this scraper unusual:
+Three mechanics that make this scraper unusual:
 
 1. **TLS-fingerprint WAF.** ``overture.org`` is fronted by Imperva /
    Incapsula, which 403s any request whose JA3 TLS fingerprint isn't a
    recognized browser. ``httpx`` and ``requests`` (and plain ``curl``)
    are blocked regardless of headers. We use ``curl_cffi`` with
-   ``impersonate="chrome"`` instead, which performs the TLS handshake
-   with Chrome's exact cipher suites / extensions.
+   ``impersonate="safari"`` (chrome variants currently fail the
+   challenge); the scraper walks a profile list rather than crashing
+   if Imperva tightens.
 
 2. **Tessitura shared-session handshake.** The first GET returns a tiny
    redirect stub containing a hidden form (``EncryptedPayload.Value`` +
    ``ReturnUrl``) that JavaScript auto-submits to ``/login/receive``.
    Until that POST happens the real page is never delivered. We
-   replicate the POST in code and the second response is the real
-   ~240KB events page.
+   replicate the POST in code and the second response is the real page.
 
-Year inference: cards show "May 10" / "May 10 - May 17" with no year.
-Events are listed chronologically, so we walk in order and increment
-year whenever the (month, start_day) regresses vs. the previous card.
+3. **Detail-page enrichment for multi-day runs.** The listing card
+   shows "Multiple Showtimes" for any multi-day run (one card covers
+   e.g. an 8-performance Broadway week). The actual per-performance
+   schedule lives on the event's detail page in a ``ul.pdp-tickets-list``
+   block with dated/timed ``li.pdp-tickets-item`` entries. For each
+   list-card event whose time we don't know yet (multi-day or
+   "Multiple Showtimes"), we fetch the detail page and emit one
+   ``RawEvent`` per unique date. When a date has multiple performances
+   (e.g. Sat matinee + evening), we keep the *latest* time — the
+   typical evening headline show — and rely on Ticketmaster to surface
+   matinees as separate events.
+
+Year inference (listing only): cards show "May 10" / "May 10 - May 17"
+with no year. Events are listed chronologically, so we walk in order
+and increment year whenever the (month, start_day) regresses vs. the
+previous card. Detail-page schedules already include the year so this
+inference is skipped for enriched events.
 
 Venue handling: the card's room (e.g. "Capitol Theater", "Promenade
 Hall") is left as ``venue_name`` so it dedups cleanly with the
@@ -37,8 +51,8 @@ the building's coordinates.
 
 import logging
 import re
-from dataclasses import dataclass
-from datetime import datetime, time as dtime
+from dataclasses import dataclass, replace
+from datetime import date as dtdate, datetime, time as dtime
 from html import unescape as html_unescape
 from typing import Optional
 from urllib.parse import urljoin
@@ -120,13 +134,18 @@ class OvertureSource(BaseSource):
     scraper_type = "html"
 
     def fetch(self) -> list[RawEvent]:
-        html_text = _fetch_events_html()
-        soup = BeautifulSoup(html_text, "lxml")
+        session, listing_html = _fetch_listing()
+        if not listing_html:
+            return []
+        soup = BeautifulSoup(listing_html, "lxml")
         cards = soup.select("li.upcoming-event-card")
         if not cards:
-            logger.warning("Overture: 0 cards parsed from %d-byte response", len(html_text))
+            logger.warning(
+                "Overture: 0 cards parsed from %d-byte listing", len(listing_html),
+            )
             return []
-        return _parse_cards(cards, today=datetime.now(_CENTRAL).date())
+        base_events = _parse_cards(cards, today=datetime.now(_CENTRAL).date())
+        return _enrich_with_schedules(base_events, session)
 
 
 # ---------------------------------------------------------------------------
@@ -142,48 +161,58 @@ _IMPERSONATE_PROFILES: tuple[str, ...] = ("safari", "safari17_2_ios", "chrome")
 _IMPERVA_BLOCK_MARKER = "Pardon Our Interruption"
 
 
-def _fetch_events_html() -> str:
-    """Two-step fetch: GET the redirect stub, then POST the encrypted
-    session payload. Returns the real events-page HTML.
+def _fetch_listing() -> tuple[Optional[object], str]:
+    """Open a curl_cffi session that gets past Imperva on the listing
+    URL and do the Tessitura handshake. Returns `(session, html)` on
+    success or `(None, "")` if every impersonate profile is challenged.
 
-    Walks `_IMPERSONATE_PROFILES` until one returns something that
-    isn't an Imperva challenge page; raises only after all profiles
-    fail (the caller logs and the scrape stats reflect 0 events)."""
-    last_html: str = ""
+    The session is kept alive so subsequent detail-page fetches reuse
+    its warmed cookies/TLS instead of re-running the handshake."""
     for profile in _IMPERSONATE_PROFILES:
         session = curl_requests.Session(impersonate=profile)
-        try:
-            stub = session.get(_LISTING_URL, timeout=30)
-            stub.raise_for_status()
-        except Exception as e:
-            logger.warning("Overture: stub GET failed with profile %s: %s", profile, e)
-            continue
-        if _IMPERVA_BLOCK_MARKER in stub.text:
-            last_html = stub.text
-            logger.info("Overture: Imperva challenge with profile %s; trying next", profile)
-            continue
-        payload, return_url = _extract_session_form(stub.text)
-        if payload is None or return_url is None:
-            # The stub response IS the events page (e.g. when a
-            # warm session cookie is in play). Return it.
-            return stub.text
-        try:
-            response = session.post(
-                _SESSION_RECEIVE_URL,
-                data={"EncryptedPayload.Value": payload, "ReturnUrl": return_url},
-                timeout=30,
-            )
-            response.raise_for_status()
-        except Exception as e:
-            logger.warning(
-                "Overture: session POST failed with profile %s: %s", profile, e,
-            )
-            continue
-        return response.text
-    # All profiles fell back to the Imperva challenge — return whatever
-    # we last got so the caller can log the byte count and bail with
-    # zero cards.
-    return last_html
+        html_text = _fetch_url(session, _LISTING_URL)
+        if html_text:
+            return session, html_text
+        logger.info(
+            "Overture: profile %s blocked or empty on listing; trying next", profile,
+        )
+    logger.warning("Overture: all impersonate profiles blocked on listing")
+    return None, ""
+
+
+def _fetch_detail_html(session, url: str) -> str:
+    """Fetch a detail-page URL through the already-warm session.
+    Returns "" if Imperva blocks or the request fails; the caller
+    falls back to the listing-card data."""
+    return _fetch_url(session, url)
+
+
+def _fetch_url(session, url: str) -> str:
+    """GET `url` through `session`, running the Tessitura form-POST
+    handshake if the response is the redirect stub. Returns "" on
+    Imperva block or network/HTTP error."""
+    try:
+        resp = session.get(url, timeout=30)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning("Overture: GET %s failed: %s", url, e)
+        return ""
+    if _IMPERVA_BLOCK_MARKER in resp.text:
+        return ""
+    payload, return_url = _extract_session_form(resp.text)
+    if payload is None or return_url is None:
+        return resp.text
+    try:
+        bridged = session.post(
+            _SESSION_RECEIVE_URL,
+            data={"EncryptedPayload.Value": payload, "ReturnUrl": return_url},
+            timeout=30,
+        )
+        bridged.raise_for_status()
+    except Exception as e:
+        logger.warning("Overture: session POST during fetch of %s failed: %s", url, e)
+        return ""
+    return bridged.text
 
 
 def _extract_session_form(html_text: str) -> tuple[Optional[str], Optional[str]]:
@@ -381,3 +410,105 @@ def _parse_card(card: Tag, start_date: datetime, end_date: datetime | None) -> R
         source_name=_SOURCE_NAME,
         source_url=source_url,
     )
+
+
+# ---------------------------------------------------------------------------
+# Detail-page enrichment: read per-performance schedule, expand events
+# ---------------------------------------------------------------------------
+
+# Detail-page date format: "Tue, May 12, 2026". Year is explicit so
+# the chronological-walk inference used on the listing isn't needed.
+_DETAIL_DATE_FMT = "%a, %B %d, %Y"
+
+
+def _enrich_with_schedules(
+    base_events: list[RawEvent], session,
+) -> list[RawEvent]:
+    """For each base event whose list-card time was missing or set to
+    "Multiple Showtimes" (i.e. all_day=True or end_at populated), fetch
+    the detail page and replace the base event with per-performance
+    entries. Single-day events with a real time pass through unchanged
+    — the list card already had the only time we have.
+
+    On detail-page failure or empty schedule the base event is kept
+    as-is so we never lose an event due to enrichment hiccups."""
+    out: list[RawEvent] = []
+    for base in base_events:
+        needs_enrichment = base.all_day or base.end_at is not None
+        if not needs_enrichment:
+            out.append(base)
+            continue
+        detail_html = _fetch_detail_html(session, base.source_url)
+        if not detail_html:
+            logger.info(
+                "Overture: detail fetch empty for %r; keeping list-card data",
+                base.title,
+            )
+            out.append(base)
+            continue
+        schedule = _parse_schedule(detail_html)
+        if not schedule:
+            out.append(base)
+            continue
+        out.extend(_expand_with_schedule(base, schedule))
+    return out
+
+
+def _parse_schedule(html_text: str) -> list[tuple[dtdate, dtime | None]]:
+    """Extract per-performance `(date, time-or-none)` entries from a
+    detail page's `ul.pdp-tickets-list` block. Duplicates (same date
+    + same time, occasionally emitted by Overture for events with
+    multiple accessibility variants) are removed. Sorted chronologically."""
+    soup = BeautifulSoup(html_text, "lxml")
+    seen: set[tuple[dtdate, dtime | None]] = set()
+    results: list[tuple[dtdate, dtime | None]] = []
+    for item in soup.select("li.pdp-tickets-item"):
+        date_el = item.select_one(".tickets-date")
+        time_el = item.select_one(".tickets-time")
+        if date_el is None:
+            continue
+        try:
+            d = datetime.strptime(
+                date_el.get_text(strip=True), _DETAIL_DATE_FMT,
+            ).date()
+        except ValueError:
+            continue
+        t = _parse_time(time_el.get_text(strip=True)) if time_el else None
+        key = (d, t)
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(key)
+    results.sort(key=lambda x: (x[0], x[1] or dtime.min))
+    return results
+
+
+def _expand_with_schedule(
+    base: RawEvent, schedule: list[tuple[dtdate, dtime | None]],
+) -> list[RawEvent]:
+    """Replace `base` with one RawEvent per unique date in `schedule`.
+    For dates with multiple performances (e.g. Sat 2 PM matinee +
+    Sat 7:30 PM evening) we keep the latest time — the typical
+    evening headline show — and rely on Ticketmaster to emit the
+    matinee as a separate event with its own time.
+
+    `schedule` is already sorted ascending by (date, time), so writing
+    each (date, time) into a dict in order yields the latest time per
+    date by last-write-wins."""
+    if not schedule:
+        return [base]
+    latest_by_date: dict[dtdate, dtime | None] = {}
+    for d, t in schedule:
+        latest_by_date[d] = t
+
+    out: list[RawEvent] = []
+    for d in sorted(latest_by_date.keys()):
+        t = latest_by_date[d]
+        if t is None:
+            start = datetime(d.year, d.month, d.day, tzinfo=_CENTRAL)
+            all_day = True
+        else:
+            start = datetime(d.year, d.month, d.day, t.hour, t.minute, tzinfo=_CENTRAL)
+            all_day = False
+        out.append(replace(base, start_at=start, end_at=None, all_day=all_day))
+    return out
