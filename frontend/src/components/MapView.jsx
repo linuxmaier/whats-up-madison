@@ -65,7 +65,7 @@ function makeBadgeIcon(count) {
   })
 }
 
-export default function MapView({ events, stickyTop = 0 }) {
+export default function MapView({ events, stickyTop = 0, fillHeight = false }) {
   const [activeEvent, setActiveEvent] = useState(null)
   const [showNoLoc, setShowNoLoc] = useState(false)
 
@@ -75,14 +75,16 @@ export default function MapView({ events, stickyTop = 0 }) {
     [events]
   )
 
-  const mapHeight = `calc(100vh - ${stickyTop + 32}px)`
+  const mapContainerStyle = fillHeight
+    ? { flex: 1, minHeight: '400px' }
+    : { height: `calc(100vh - ${stickyTop + 32}px)`, minHeight: '400px' }
 
   return (
-    <div className="mt-4">
+    <div className={fillHeight ? 'flex-1 min-h-0 flex flex-col mt-4' : 'mt-4'}>
       <div
         role="region"
         aria-label="Map of Madison events"
-        style={{ height: mapHeight, minHeight: '400px' }}
+        style={mapContainerStyle}
         className="rounded-lg overflow-hidden border border-gray-200 shadow-sm"
       >
         <MapContainer

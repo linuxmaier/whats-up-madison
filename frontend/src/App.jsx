@@ -64,6 +64,7 @@ export default function App() {
 
   const trimmedQuery = searchQuery.trim()
   const isSearching = trimmedQuery.length > 0
+  const isMapMode = viewMode === 'map' && !isSearching
 
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
@@ -170,7 +171,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={isMapMode ? 'h-screen flex flex-col overflow-hidden bg-gray-50' : 'min-h-screen bg-gray-50'}>
       <div ref={headerRef} className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col items-center gap-y-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <button
@@ -221,8 +222,8 @@ export default function App() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 pt-4 pb-6">
-        <div>
+      <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col w-full max-w-7xl mx-auto px-4 pt-4' : 'max-w-7xl mx-auto px-4 pt-4 pb-6'}>
+        <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col' : ''}>
           {isSearching ? (
             <SearchResults
               query={trimmedQuery}
@@ -245,12 +246,14 @@ export default function App() {
               )}
               {!loading && !error && filteredEvents.length > 0 && (
                 <>
-                  <p className="text-gray-500 text-xs mb-2">
-                    {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
-                    {filteredEvents.length !== events.length && (
-                      <span className="text-gray-400"> of {events.length}</span>
-                    )}
-                  </p>
+                  {!isMapMode && (
+                    <p className="text-gray-500 text-xs mb-2">
+                      {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
+                      {filteredEvents.length !== events.length && (
+                        <span className="text-gray-400"> of {events.length}</span>
+                      )}
+                    </p>
+                  )}
                   {viewMode === 'list' ? (
                     <>
                       <DensityRail
@@ -271,7 +274,7 @@ export default function App() {
                       ))}
                     </>
                   ) : (
-                    <MapView events={filteredEvents} stickyTop={headerH} />
+                    <MapView events={filteredEvents} stickyTop={headerH} fillHeight />
                   )}
                 </>
               )}
