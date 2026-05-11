@@ -222,7 +222,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col max-w-7xl mx-auto px-4 pt-4' : 'max-w-7xl mx-auto px-4 pt-4 pb-6'}>
+      <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col w-full max-w-7xl mx-auto px-4 pt-4' : 'max-w-7xl mx-auto px-4 pt-4 pb-6'}>
         <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col' : ''}>
           {isSearching ? (
             <SearchResults
