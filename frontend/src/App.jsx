@@ -234,7 +234,7 @@ export default function App() {
             />
           ) : (
             <>
-              {loading && <p className="text-gray-400 text-sm">Loading…</p>}
+              {loading && <p className="text-gray-200 text-base animate-pulse">Warming up the site because we're using crappy free tier servers...</p>}
               {error && <p className="text-red-500 text-sm">Error: {error}</p>}
               {!loading && !error && events.length === 0 && (
                 <p className="text-gray-400 text-sm">No events found for this date.</p>
