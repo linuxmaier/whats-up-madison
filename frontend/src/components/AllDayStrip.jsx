@@ -85,7 +85,7 @@ function AllDayCard({ event }) {
                   href={s.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-xs text-brand hover:underline"
                   onClick={e => e.stopPropagation()}
                 >
                   {s.source_name} ↗

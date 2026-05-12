@@ -1,3 +1,38 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* === Madison themes === */
+:root {
+  --c-brand: #1B5299;
+  --c-brand-dark: #154280;
+  --c-brand-light: #e8f0fb;
+  --c-accent: #D97706;
+}
+[data-theme="forward"] {
+  --c-brand: #1e3a5f;
+  --c-brand-dark: #162d4c;
+  --c-brand-light: #eef2f8;
+  --c-accent: #ec4899;
+}
+[data-theme="violet"] {
+  --c-brand: #6d28d9;
+  --c-brand-dark: #5b21b6;
+  --c-brand-light: #ede9fe;
+  --c-accent: #f59e0b;
+}
+[data-theme="green"] {
+  --c-brand: #065F46;
+  --c-brand-dark: #044d38;
+  --c-brand-light: #d1fae5;
+  --c-accent: #D97706;
+}
+
+/* Leaflet cluster badge — inner circle uses brand color, outer ring uses tint */
+.marker-cluster div {
+  background-color: var(--c-brand) !important;
+  color: white !important;
+}
+.marker-cluster {
+  background-color: var(--c-brand-light) !important;
+}

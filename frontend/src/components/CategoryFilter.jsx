@@ -67,7 +67,7 @@ export default function CategoryFilter({
         onClick={() => setOpen((v) => !v)}
         className={`px-2 py-1 text-sm rounded border transition-colors flex items-center gap-1 ${
           showBadge
-            ? 'border-blue-500 text-blue-700 bg-blue-50 hover:bg-blue-100'
+            ? 'border-brand text-brand bg-brand-light hover:bg-brand-light'
             : 'border-gray-400 bg-white text-gray-800 font-medium hover:bg-gray-50'
         }`}
         aria-expanded={open}
@@ -85,7 +85,7 @@ export default function CategoryFilter({
         </svg>
         <span className="hidden sm:inline">Categories</span>
         {showBadge && (
-          <span className="text-[10px] px-1 py-0.5 rounded-full bg-blue-600 text-white leading-none">
+          <span className="text-[10px] px-1 py-0.5 rounded-full bg-brand text-white leading-none">
             {hiddenCount} hidden
           </span>
         )}
@@ -105,7 +105,7 @@ export default function CategoryFilter({
               <button
                 type="button"
                 onClick={selectAll}
-                className="text-blue-600 hover:underline"
+                className="text-brand hover:underline"
               >
                 Select all
               </button>
@@ -113,7 +113,7 @@ export default function CategoryFilter({
               <button
                 type="button"
                 onClick={clearAll}
-                className="text-blue-600 hover:underline"
+                className="text-brand hover:underline"
               >
                 Clear
               </button>
@@ -121,7 +121,7 @@ export default function CategoryFilter({
               <button
                 type="button"
                 onClick={resetDefaults}
-                className="text-blue-600 hover:underline"
+                className="text-brand hover:underline"
               >
                 Reset
               </button>
@@ -139,7 +139,7 @@ export default function CategoryFilter({
                   onClick={() => toggleCategory(c)}
                   className={`text-xs px-2 py-1 rounded-full border transition-colors ${
                     active
-                      ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700'
+                      ? 'bg-brand border-brand text-white hover:bg-brand-dark'
                       : `bg-white text-gray-600 hover:bg-gray-50 ${
                           isDefaultExcluded
                             ? 'border-dashed border-gray-300'
@@ -164,7 +164,7 @@ export default function CategoryFilter({
               type="checkbox"
               checked={includeUncategorized}
               onChange={(e) => setIncludeUncategorized(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="rounded border-gray-300 text-brand focus:ring-brand"
             />
             <span>Show uncategorized events</span>
           </label>

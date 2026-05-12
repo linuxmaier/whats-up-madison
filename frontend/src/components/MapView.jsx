@@ -43,7 +43,7 @@ function makeBadgeIcon(count) {
           position: absolute;
           top: -4px;
           right: -8px;
-          background: #2563eb;
+          background: var(--c-brand);
           color: white;
           border-radius: 9999px;
           font-size: 11px;
@@ -160,7 +160,7 @@ function PinPopup({ group, onPick }) {
           style={{
             marginTop: '8px',
             padding: '4px 10px',
-            background: '#2563eb',
+            background: 'var(--c-brand)',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
