@@ -48,6 +48,17 @@ function bucketForHour(hour) {
   return 'morning'
 }
 
+function CapitolIcon({ className }) {
+  return (
+    <svg viewBox="0 0 100 100" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M72.6,53.3c-8-1.1-15.1-1.5-22.6-1.5s-14.5,0.4-22.6,1.5c-1.5,0.3-2.5,2.1-2.5,3.4c0,1,0,11.2,0,11.2c0.7-0.1,2-0.2,3.8-0.3v-8.7c0-1.4,1.1-2.6,2.5-2.7c1.3-0.1,2.4,0.9,2.4,2.3v8.8c2.2-0.1,4.8-0.2,7.6-0.3v-9.2c0-1.4,1.1-2.5,2.5-2.5c1.4,0,2.5,1,2.5,2.4v9.2c2.4,0,5.2,0,7.6,0v-9.2c0-1.4,1.1-2.4,2.5-2.4c1.3,0,2.5,1.2,2.5,2.5V67c2.8,0.1,5.4,0.2,7.6,0.3v-8.8c0-1.4,1.1-2.4,2.4-2.3c1.4,0.1,2.5,1.3,2.5,2.7v8.7c1.8,0.1,3.1,0.2,3.8,0.3c0,0,0-10.2,0-11.2C75.3,55.3,74.1,53.6,72.6,53.3z"/>
+      <path d="M50,69.4c-20.5,0-34.6,2.4-34.6,2.4V95l2.6-0.1c17.7-0.6,30.1-0.7,32-0.7s14.7,0.1,32.3,0.7l2.3,0.1V71.8C84.6,71.8,70.5,69.4,50,69.4z M27.4,87.8c0,1.3-1.1,2.5-2.5,2.7c-1.3,0.1-2.4-0.8-2.4-2.2c0-3.6,0-7.2,0-10.8c0-1.3,1.1-2.6,2.4-2.7c1.3-0.1,2.5,0.9,2.5,2.2C27.4,80.7,27.4,84.3,27.4,87.8z M39.9,87c0,1.3-1.1,2.5-2.5,2.6c-1.4,0.1-2.5-1-2.5-2.3c0-3.6,0-7.2,0-10.8c0-1.3,1.1-2.5,2.5-2.6c1.4-0.1,2.5,1,2.5,2.3C39.9,79.9,39.9,83.4,39.9,87z M52.5,86.8c0,1.3-1.1,2.4-2.4,2.4c-1.4,0-2.5-1.1-2.5-2.4c0-3.6,0-7.2,0-10.8c0-1.3,1.1-2.5,2.5-2.5s2.4,1.1,2.4,2.5C52.5,79.7,52.5,83.3,52.5,86.8z M65.1,87.3c0,1.3-1.1,2.4-2.5,2.3c-1.4-0.1-2.5-1.2-2.5-2.6c0-3.6,0-7.2,0-10.8c0-1.3,1.1-2.4,2.5-2.3c1.4,0.1,2.5,1.2,2.5,2.6C65.1,80.1,65.1,83.7,65.1,87.3z M77.5,88.3c0,1.3-1.1,2.3-2.4,2.2c-1.3-0.1-2.4-1.3-2.4-2.7c0-3.6,0-7.2,0-10.8c0-1.3,1.1-2.4,2.4-2.2c1.3,0.1,2.4,1.4,2.4,2.7C77.5,81.2,77.5,84.8,77.5,88.3z"/>
+      <path d="M72.4,50.5c-0.3-12-8.6-23.2-22.4-23.2S27.9,38.3,27.6,50.5C31.8,49.8,52.5,47.4,72.4,50.5z"/>
+      <path d="M57.2,23.3c0-2.6-1.7-4.7-3.7-5.7V8.5C53.5,6.6,51.9,5,50,5s-3.5,1.6-3.5,3.5v9.3c-1.9,1-3.4,3-3.4,5.5c0,0.7-0.2,1.6-0.4,2.5c2.7-0.8,5.2-1,7.4-1c2.2,0,4.7,0.3,7.4,1C57.3,24.9,57.2,24,57.2,23.3z"/>
+    </svg>
+  )
+}
+
 export default function App() {
   const [selectedDate, setSelectedDate] = useState(toLocalDateString(new Date()))
   const [events, setEvents] = useState([])
@@ -171,31 +182,42 @@ export default function App() {
   }
 
   return (
-    <div className={isMapMode ? 'h-screen flex flex-col overflow-hidden bg-gray-50' : 'min-h-screen bg-gray-50'}>
-      <div ref={headerRef} className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
+    <div
+      className={isMapMode ? 'h-screen flex flex-col overflow-hidden' : 'min-h-screen'}
+      style={{ background: 'linear-gradient(to bottom, #fce4ec 0%, #e3f2fd 12%, #bbdefb 28%, #90a4d4 58%, #283593 85%, #1a237e 100%)' }}
+    >
+      <div
+        ref={headerRef}
+        className="sticky top-0 z-30 border-b"
+        style={{ background: 'var(--c-brand)', borderColor: 'rgba(0,0,0,0.15)' }}
+      >
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col items-center gap-y-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <button
             type="button"
             onClick={() => setSelectedDate(toLocalDateString(new Date()))}
-            className="text-lg font-bold text-gray-900 hover:text-gray-600 cursor-pointer transition-colors"
+            className="flex items-center gap-2 text-lg font-bold hover:opacity-75 cursor-pointer transition-opacity"
           >
-            What's Up Madison
+            <CapitolIcon className="w-5 h-5 flex-shrink-0 text-accent" />
+            <span>
+              <span className="text-white">What&apos;s Up </span>
+              <span className="text-accent">Madison</span>
+            </span>
           </button>
           <div className="flex flex-wrap justify-center sm:flex-nowrap sm:justify-start items-center gap-2">
             <SearchBar value={searchQuery} onChange={setSearchQuery} />
             {!isSearching && (
-              <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
+              <div className="inline-flex border border-white/30 rounded overflow-hidden text-sm">
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 cursor-pointer ${viewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  className={`px-3 py-1 cursor-pointer transition-colors ${viewMode === 'list' ? 'bg-white text-brand font-medium' : 'bg-white/10 text-white hover:bg-white/20'}`}
                 >
                   List
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('map')}
-                  className={`px-3 py-1 cursor-pointer ${viewMode === 'map' ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  className={`px-3 py-1 cursor-pointer transition-colors ${viewMode === 'map' ? 'bg-white text-brand font-medium' : 'bg-white/10 text-white hover:bg-white/20'}`}
                 >
                   Map
                 </button>
@@ -214,7 +236,7 @@ export default function App() {
                     hiddenVenues={hiddenVenues}
                     onChange={setHiddenVenues}
                   />
-                  <DatePicker value={selectedDate} onChange={setSelectedDate} />
+                  <DatePicker value={selectedDate} onChange={setSelectedDate} onDark />
                 </>
               )}
             </div>
@@ -234,13 +256,13 @@ export default function App() {
             />
           ) : (
             <>
-              {loading && <p className="text-gray-200 text-base animate-pulse">Warming up the site because we're using crappy free tier servers...</p>}
+              {loading && <p className="text-gray-400 text-base animate-pulse">Warming up the site because we&apos;re using crappy free tier servers...</p>}
               {error && <p className="text-red-500 text-sm">Error: {error}</p>}
               {!loading && !error && events.length === 0 && (
-                <p className="text-gray-400 text-sm">No events found for this date.</p>
+                <p className="text-gray-500 text-sm">No events found for this date.</p>
               )}
               {!loading && !error && events.length > 0 && filteredEvents.length === 0 && (
-                <p className="text-gray-400 text-sm">
+                <p className="text-gray-500 text-sm">
                   All {events.length} events for this date are hidden by your filter.
                 </p>
               )}
@@ -301,6 +323,19 @@ export default function App() {
           >
             Submit feedback
           </button>
+          <span aria-hidden="true">·</span>
+          <span>
+            Icon by Loren Klein from{' '}
+            <a
+              href="https://thenounproject.com/browse/icons/term/capitol-building/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-600 transition-colors"
+            >
+              Noun Project
+            </a>
+            {' '}(CC BY 3.0)
+          </span>
         </div>
       </footer>
 

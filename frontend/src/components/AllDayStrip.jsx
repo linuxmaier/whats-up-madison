@@ -8,8 +8,8 @@ export default function AllDayStrip({ events, stickyTop }) {
   if (!events || events.length === 0) return null
 
   return (
-    <section id="allday" className="scroll-mt-32 mt-4">
-      <h2 className="sticky z-10 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between" style={{ top: stickyTop }}>
+    <section id="allday" className="scroll-mt-32 mb-6">
+      <h2 className="sticky z-10 bg-rose-50 border border-rose-200 text-rose-900 rounded-b-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between shadow-sm" style={{ top: stickyTop }}>
         <span>All Day / Time Varies</span>
         <span className="text-xs font-normal opacity-70">
           {events.length} event{events.length === 1 ? '' : 's'}
@@ -33,7 +33,7 @@ function AllDayCard({ event }) {
     <>
       <div
         tabIndex={0}
-        className="bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm cursor-pointer hover:border-emerald-300 hover:shadow transition select-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
+        className="bg-white rounded-md border border-gray-200 px-3 py-2 shadow-sm cursor-pointer hover:border-brand hover:shadow transition select-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
         onClick={() => setModalOpen(true)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalOpen(true) } }}
       >
@@ -85,7 +85,7 @@ function AllDayCard({ event }) {
                   href={s.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-xs text-brand hover:underline"
                   onClick={e => e.stopPropagation()}
                 >
                   {s.source_name} ↗

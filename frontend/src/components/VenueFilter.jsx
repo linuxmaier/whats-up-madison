@@ -59,15 +59,15 @@ export default function VenueFilter({ allVenues, hiddenVenues, onChange }) {
         onClick={() => (open ? setOpen(false) : openDropdown())}
         className={`px-2 py-1 text-sm rounded border transition-colors flex items-center gap-1 ${
           showBadge
-            ? 'border-blue-500 text-blue-700 bg-blue-50 hover:bg-blue-100'
-            : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+            ? 'border-brand text-brand bg-brand-light hover:bg-brand-light'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
         }`}
         aria-expanded={open}
         aria-haspopup="dialog"
       >
         <span>Venues</span>
         {showBadge && (
-          <span className="text-[10px] px-1 py-0.5 rounded-full bg-blue-600 text-white leading-none">
+          <span className="text-[10px] px-1 py-0.5 rounded-full bg-brand text-white leading-none">
             {hiddenVenues.size} hidden
           </span>
         )}
@@ -87,7 +87,7 @@ export default function VenueFilter({ allVenues, hiddenVenues, onChange }) {
               <button
                 type="button"
                 onClick={showAll}
-                className="text-blue-600 hover:underline"
+                className="text-brand hover:underline"
               >
                 Show all
               </button>
@@ -95,7 +95,7 @@ export default function VenueFilter({ allVenues, hiddenVenues, onChange }) {
               <button
                 type="button"
                 onClick={hideAll}
-                className="text-blue-600 hover:underline"
+                className="text-brand hover:underline"
               >
                 Hide all
               </button>
@@ -108,7 +108,7 @@ export default function VenueFilter({ allVenues, hiddenVenues, onChange }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search venues…"
-            className="w-full mb-2 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+            className="w-full mb-2 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-brand"
           />
 
           <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
@@ -125,7 +125,7 @@ export default function VenueFilter({ allVenues, hiddenVenues, onChange }) {
                   className={`text-xs px-2 py-1.5 rounded border text-left transition-colors ${
                     hidden
                       ? 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'
-                      : 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-brand border-brand text-white hover:bg-brand-dark'
                   }`}
                   aria-pressed={!hidden}
                 >

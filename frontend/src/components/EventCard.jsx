@@ -14,7 +14,7 @@ export default function EventCard({ event }) {
     <>
       <div
         tabIndex={0}
-        className="bg-white rounded-lg border border-gray-200 px-4 py-3 shadow-sm flex flex-col cursor-pointer hover:border-gray-300 hover:shadow transition select-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
+        className="bg-white rounded-lg border border-gray-200 px-4 py-3 shadow-sm flex flex-col cursor-pointer hover:border-gray-300 hover:shadow transition select-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
         onClick={() => setModalOpen(true)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalOpen(true) } }}
       >
@@ -69,7 +69,7 @@ export default function EventCard({ event }) {
                   href={s.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-xs text-brand hover:underline"
                   onClick={e => e.stopPropagation()}
                 >
                   {s.source_name} ↗
