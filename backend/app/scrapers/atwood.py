@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from datetime import datetime, time as dtime, timedelta
 from urllib.parse import unquote, urljoin
 from zoneinfo import ZoneInfo
@@ -14,18 +15,25 @@ _BASE_URL = "https://www.theatwoodmusichall.com"
 _CALENDAR_URL = f"{_BASE_URL}/shows"
 _CENTRAL = ZoneInfo("America/Chicago")
 _DEFAULT_VENUE_NAME = "Atwood Music Hall"
+_FETCH_DELAY = 0.5  # courtesy delay between detail-page fetches
 _TIME_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*(am|pm)\s*$", re.IGNORECASE)
 # Atwood's structured `event-time-localized-*` fields are unreliable placeholders
 # (commonly nominal "8:00 PM - 9:00 PM" regardless of the real show time). The
-# excerpt's "Show <time>" line is what the venue actually communicates as the
-# show time — observed off by 1-3 hours from the structured times across the
-# entire current calendar. Match "Show 11PM", "Show: 6:00pm", "Show 7:30 PM",
-# "/ Show 8pm", etc. Capture groups: hour, optional :minute, am|pm.
+# description's time lines are what the venue actually communicates — observed
+# off by 1-3 hours from the structured times across the entire current calendar.
+# Patterns tried in priority order: Show/Showtime/Show Time, Doors, bare range.
 _DESC_SHOW_RE = re.compile(
-    r"\bShow\b\s*[:/]?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", re.IGNORECASE
+    r"\b(?:Showtime|Show(?:\s+Time)?)\b\s*[:/]?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
+    re.IGNORECASE,
 )
 _DESC_DOORS_RE = re.compile(
     r"\bDoors\b\s*[:/]?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", re.IGNORECASE
+)
+# Bare time range "5PM-9PM" / "5:00 PM – 9:00 PM" — no Show/Doors label.
+# MULTILINE anchors ^ to the start of that line to avoid false matches on prices.
+_DESC_BARE_TIME_RE = re.compile(
+    r"^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*[-–]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -38,13 +46,25 @@ class AtwoodMusicHallSource(BaseSource):
         resp = http_get_with_retry(_CALENDAR_URL, timeout=30)
         soup = BeautifulSoup(resp.content, "lxml")
         events: list[RawEvent] = []
+        ok = fail = 0
         # `eventlist-event--upcoming` filters out the past-show siblings the page
         # still ships (~30 of them at any time) so we don't resurrect events the
         # ingest staleness sweep already deactivated.
         for card in soup.select("article.eventlist-event--upcoming"):
-            event = _parse_card(card)
+            title_el = card.select_one("h1.eventlist-title a.eventlist-title-link")
+            href = (title_el.get("href") or "") if title_el else ""
+            detail_desc: str | None = None
+            if href:
+                time.sleep(_FETCH_DELAY)
+                detail_desc = _fetch_event_detail(urljoin(_BASE_URL, href))
+                if detail_desc:
+                    ok += 1
+                else:
+                    fail += 1
+            event = _parse_card(card, detail_desc)
             if event is not None:
                 events.append(event)
+        logger.info("Atwood: detail enrichment %d/%d succeeded", ok, ok + fail)
         return events
 
 
@@ -132,13 +152,39 @@ def _extract_description(card: Tag) -> str | None:
     return text or None
 
 
+def _fetch_event_detail(url: str) -> str | None:
+    """Fetch the event detail page and return plain-text description paragraphs.
+
+    Atwood's listing excerpts are always just time/pricing; the actual event
+    description is only on the detail page inside .eventitem-column-content.
+    Button text (Buy Tickets, Facebook RSVP) lives in non-<p> elements and is
+    automatically excluded by selecting only <p> tags.
+    """
+    try:
+        resp = http_get_with_retry(url, timeout=15)
+        soup = BeautifulSoup(resp.content, "lxml")
+        col = soup.select_one(".eventitem-column-content")
+        if col is None:
+            return None
+        paras = [clean_html_text(p.get_text(" ", strip=True)) for p in col.select("p")]
+        text = "\n".join(p for p in paras if p)
+        return text or None
+    except Exception as exc:
+        logger.warning("Atwood: failed to fetch detail from %s: %s", url, exc)
+        return None
+
+
 def _show_time_from_description(description: str | None) -> dtime | None:
-    """Pull the actual show time out of the excerpt. Prefers `Show <time>`;
-    falls back to `Doors <time>` (better than nothing — about an hour earlier
-    than the show, but on the right calendar day)."""
+    """Pull the actual show time out of the description.
+
+    Priority order:
+    1. Show / Showtime / Show Time <time>
+    2. Doors <time> (about 1h earlier — better than the placeholder)
+    3. Bare time range "5PM-9PM" (no Show/Doors keyword)
+    """
     if not description:
         return None
-    for pattern in (_DESC_SHOW_RE, _DESC_DOORS_RE):
+    for pattern in (_DESC_SHOW_RE, _DESC_DOORS_RE, _DESC_BARE_TIME_RE):
         m = pattern.search(description)
         if m:
             hour = m.group(1)
@@ -188,7 +234,7 @@ def _build_start_end(
     return start_at, end_at, False
 
 
-def _parse_card(card: Tag) -> RawEvent | None:
+def _parse_card(card: Tag, detail_desc: str | None = None) -> RawEvent | None:
     title_el = card.select_one("h1.eventlist-title a.eventlist-title-link")
     if title_el is None:
         return None
@@ -204,7 +250,8 @@ def _parse_card(card: Tag) -> RawEvent | None:
 
     source_url = urljoin(_BASE_URL, href)
 
-    description = _extract_description(card)
+    # Prefer the richer detail-page description; fall back to the listing excerpt.
+    description = detail_desc or _extract_description(card)
     start_at, end_at, all_day = _build_start_end(base_dt, card, description)
 
     venue_name, venue_address = _extract_venue(card)

@@ -1,4 +1,5 @@
 """Unit tests for atwood.py parsing helpers."""
+import time
 from datetime import datetime, time as dtime
 
 from bs4 import BeautifulSoup
@@ -112,6 +113,34 @@ class TestShowTimeFromDescription:
         assert _show_time_from_description("Seated show. $30 cover.") is None
         assert _show_time_from_description("") is None
         assert _show_time_from_description(None) is None
+
+    # Bare time range "5PM-9PM" — no Show/Doors keyword (issue #122, Dayshift).
+    def test_bare_time_range(self):
+        assert _show_time_from_description("5PM-9PM") == dtime(17, 0)
+
+    def test_bare_time_range_with_minutes(self):
+        assert _show_time_from_description("5:30PM-9:00PM") == dtime(17, 30)
+
+    def test_bare_time_range_with_spaces(self):
+        assert _show_time_from_description("5:00 PM – 9:00 PM") == dtime(17, 0)
+
+    def test_show_preferred_over_bare_range(self):
+        # Description has both a bare range and a Show line — Show wins.
+        assert _show_time_from_description("5PM-9PM\nShow 8PM") == dtime(20, 0)
+
+    def test_doors_preferred_over_bare_range(self):
+        # Doors beats bare range (Doors is 2nd, bare range is 3rd).
+        assert _show_time_from_description("5PM-9PM\nDoors 7PM") == dtime(19, 0)
+
+    # "Show Time:" / "Showtime:" variants present in live Atwood data.
+    def test_show_time_colon(self):
+        assert _show_time_from_description("Show Time: 7:00PM") == dtime(19, 0)
+
+    def test_showtime_colon(self):
+        assert _show_time_from_description("Showtime: 7:00PM") == dtime(19, 0)
+
+    def test_show_time_wins_over_doors(self):
+        assert _show_time_from_description("Doors 6PM Show Time: 7PM") == dtime(19, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +329,22 @@ class TestParseCard:
         assert ev.venue_name == _DEFAULT_VENUE_NAME
         assert ev.venue_address is None
 
+    def test_detail_desc_overrides_excerpt(self):
+        # Simulates the Dayshift case: structured field says 9PM, excerpt says
+        # "5PM-9PM", and the detail page has the full description.
+        detail = "5PM-9PM\n$22ADV / $27DOS\nA 30+ Daytime Party in Madison."
+        html = _FULL_CARD_HTML.replace(
+            "<p>Doors 6PM Show 7PM</p><p>Early Bird: $25</p>",
+            "<p>5PM-9PM</p><p>$22ADV / $27DOS</p>",
+        )
+        ev = _parse_card(_card(html), detail_desc=detail)
+        assert ev is not None
+        # Time extracted from the detail description's bare range.
+        assert ev.start_at == datetime(2026, 5, 9, 17, 0, tzinfo=_CENTRAL)
+        assert ev.end_at is None
+        # Full detail description used, not the thin excerpt.
+        assert ev.description == detail
+
 
 # ---------------------------------------------------------------------------
 # Page-level filtering: past events skipped
@@ -329,6 +374,8 @@ class TestPageLevelFiltering:
             return _Resp()
 
         monkeypatch.setattr("app.scrapers.atwood.http_get_with_retry", fake_get)
+        monkeypatch.setattr("app.scrapers.atwood._fetch_event_detail", lambda url: None)
+        monkeypatch.setattr(time, "sleep", lambda _: None)
 
         events = AtwoodMusicHallSource().fetch()
         titles = [e.title for e in events]
