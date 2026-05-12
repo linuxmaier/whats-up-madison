@@ -8,7 +8,7 @@
   --c-brand-dark: #0d47a1;  /* Deep water */
   --c-brand-light: #e3f2fd; /* Pale lake */
   --c-accent: #e05585;      /* Flamingo pink */
-  --c-page-bg: #fdf0f6;     /* Pale rose blush */
+  --c-page-bg: #bbdefb;     /* Pale lake — Material Blue 100 */
 }
 
 /* Leaflet cluster badge — inner circle uses brand color, outer ring uses tint */

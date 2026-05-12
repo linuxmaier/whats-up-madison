@@ -2,10 +2,17 @@ import EventCard from './EventCard'
 import { localHour } from '../lib/eventTime'
 
 const TINTS = {
-  morning: 'bg-amber-100 border-amber-300 text-amber-800 shadow-sm',
-  afternoon: 'bg-sky-100 border-sky-300 text-sky-800 shadow-sm',
-  evening: 'bg-indigo-100 border-indigo-300 text-indigo-800 shadow-sm',
-  night: 'bg-slate-200 border-slate-400 text-slate-900 shadow-sm',
+  morning:   'bg-rose-100   border-rose-300   text-rose-900   shadow-sm',
+  afternoon: 'bg-sky-100    border-sky-300    text-sky-900    shadow-sm',
+  evening:   'bg-violet-300 border-violet-500 text-violet-950 shadow-sm',
+  night:     'bg-indigo-900 border-indigo-700 text-indigo-100 shadow-sm',
+}
+
+const DIVIDER = {
+  morning:   { line: 'border-rose-300/60',   label: 'text-rose-800/70'   },
+  afternoon: { line: 'border-sky-300/60',    label: 'text-sky-800/70'    },
+  evening:   { line: 'border-white/30',      label: 'text-white/80'      },
+  night:     { line: 'border-white/20',      label: 'text-white/70'      },
 }
 
 function formatHour(h) {
@@ -18,6 +25,7 @@ export default function BucketSection({ id, label, events, stickyTop }) {
   if (!events || events.length === 0) return null
 
   const tint = TINTS[id] ?? 'bg-gray-100 border-gray-200 text-gray-800'
+  const divider = DIVIDER[id] ?? { line: 'border-gray-300', label: 'text-gray-500' }
 
   const hourGroups = []
   for (const event of events) {
@@ -28,10 +36,10 @@ export default function BucketSection({ id, label, events, stickyTop }) {
   }
 
   return (
-    <section id={id} style={{ scrollMarginTop: stickyTop }} className="mt-6 first:mt-2">
+    <section id={id} style={{ scrollMarginTop: stickyTop }} className="mb-6">
       <h2
         style={{ top: stickyTop }}
-        className={`sticky z-10 ${tint} border rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between`}
+        className={`sticky z-10 ${tint} border rounded-b-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between`}
       >
         <span>{label}</span>
         <span className="text-xs font-normal opacity-70">
@@ -42,9 +50,9 @@ export default function BucketSection({ id, label, events, stickyTop }) {
         <div key={hour}>
           {i > 0 && (
             <div className="flex items-center gap-3 mt-4 mb-1">
-              <div className="flex-1 border-t border-blue-100" />
-              <span className="text-xs text-gray-500">{formatHour(hour)}</span>
-              <div className="flex-1 border-t border-blue-100" />
+              <div className={`flex-1 border-t ${divider.line}`} />
+              <span className={`text-xs ${divider.label}`}>{formatHour(hour)}</span>
+              <div className={`flex-1 border-t ${divider.line}`} />
             </div>
           )}
           <div id={`hour-${hour}`} className="scroll-mt-40" />

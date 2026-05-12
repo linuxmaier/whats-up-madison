@@ -8,8 +8,8 @@ export default function AllDayStrip({ events, stickyTop }) {
   if (!events || events.length === 0) return null
 
   return (
-    <section id="allday" className="scroll-mt-32 mt-4">
-      <h2 className="sticky z-10 bg-blue-50 border border-blue-200 text-blue-900 rounded-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between shadow-sm" style={{ top: stickyTop }}>
+    <section id="allday" className="scroll-mt-32 mb-6">
+      <h2 className="sticky z-10 bg-rose-50 border border-rose-200 text-rose-900 rounded-b-md px-3 py-1.5 text-sm font-semibold flex items-center justify-between shadow-sm" style={{ top: stickyTop }}>
         <span>All Day / Time Varies</span>
         <span className="text-xs font-normal opacity-70">
           {events.length} event{events.length === 1 ? '' : 's'}
