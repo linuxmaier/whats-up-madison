@@ -42,11 +42,13 @@ and increment year whenever the (month, start_day) regresses vs. the
 previous card. Detail-page schedules already include the year so this
 inference is skipped for enriched events.
 
-Venue handling: the card's room (e.g. "Capitol Theater", "Promenade
-Hall") is left as ``venue_name`` so it dedups cleanly with the
-Ticketmaster scraper's per-room values; the seven Overture-internal
-rooms are added to ``canonical_venues`` so geocoding still resolves to
-the building's coordinates.
+Venue handling: internal sub-rooms (e.g. "Capitol Theater", "Promenade
+Hall") are normalized to "Overture Center for the Arts" by
+``_normalize_venue`` so all Overture events share a single venue_name
+regardless of which room they're in. The same normalization is also
+applied by the ingest layer via ``canonical_venues``, which covers
+Isthmus's "Venue-Subroom" compound format and any other source that
+names a sub-room explicitly.
 """
 
 import logging

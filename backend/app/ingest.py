@@ -1,4 +1,5 @@
 import logging
+from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
@@ -32,6 +33,12 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
     run_start = datetime.now(timezone.utc)
     inserted = 0
     updated = 0
+
+    # Normalize venue names to canonical building names before hashing so
+    # events from sources that use sub-room names (e.g. Isthmus iCal's
+    # "Overture Center-Overture Hall") merge with events from sources that
+    # use the building name (e.g. Ticketmaster's "Overture Center for the Arts").
+    raw_events = [_normalize_raw_venue(r) for r in raw_events]
 
     # Collapse raws that share a canonical_hash — a single source can return
     # multiple records that map to the same event (e.g. Visit Madison lists two
@@ -246,6 +253,13 @@ def _best_existing_rank(event: Event, db: Session) -> float:
     if not rows:
         return float("inf")
     return min(_source_rank(r.source_name) for r in rows)
+
+
+def _normalize_raw_venue(raw: RawEvent) -> RawEvent:
+    normalized = canonical_venues.normalize_name(raw.venue_name)
+    if normalized == raw.venue_name:
+        return raw
+    return dc_replace(raw, venue_name=normalized)
 
 
 def _apply_canonical_address(event: Event) -> None:

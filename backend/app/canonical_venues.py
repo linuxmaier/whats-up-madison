@@ -19,7 +19,16 @@ class CanonicalVenue(NamedTuple):
     latitude: float
     longitude: float
     address: str
+    # When set, ingest normalizes venue_name to this string before hashing and
+    # dedup so events from sources that use sub-room names merge with events
+    # from sources that use the building name.
+    canonical_name: Optional[str] = None
 
+
+_OVERTURE = CanonicalVenue(
+    43.0741343, -89.3882773, "201 State St, Madison, WI 53703",
+    canonical_name="Overture Center for the Arts",
+)
 
 CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "high noon saloon": CanonicalVenue(
@@ -43,40 +52,31 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "barrymore theatre": CanonicalVenue(
         43.0930640, -89.3522665, "2090 Atwood Ave, Madison, WI 53704"
     ),
-    "overture center": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
+    # Overture Center building names — the canonical display name is
+    # "Overture Center for the Arts"; all sub-room and alias entries
+    # below carry canonical_name so ingest normalizes them before hashing.
     "overture center for the arts": CanonicalVenue(
         43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
     ),
-    # Sub-rooms physically inside Overture Center. The Overture scraper
-    # leaves the room name on venue_name (so it dedups cleanly with
-    # Ticketmaster's per-room values) and relies on this registry to
-    # keep geocoding and the displayed address pointing at the building.
-    "overture hall": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
-    "capitol theater": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
-    "capitol theater stage": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
-    "promenade hall": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
-    "promenade lobby": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
-    "rotunda stage": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
-    "the playhouse": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
-    "james watrous gallery": CanonicalVenue(
-        43.0741343, -89.3882773, "201 State St, Madison, WI 53703"
-    ),
+    "overture center": _OVERTURE,
+    # Sub-rooms by bare room name (Overture scraper, some sources)
+    "overture hall":          _OVERTURE,
+    "capitol theater":        _OVERTURE,
+    "capitol theater stage":  _OVERTURE,
+    "promenade hall":         _OVERTURE,
+    "promenade lobby":        _OVERTURE,
+    "rotunda stage":          _OVERTURE,
+    "the playhouse":          _OVERTURE,
+    "james watrous gallery":  _OVERTURE,
+    # "Venue-Subroom" compound format used by the Isthmus iCal/RSS feed
+    "overture center-overture hall":         _OVERTURE,
+    "overture center-capitol theater":       _OVERTURE,
+    "overture center-capitol theater stage": _OVERTURE,
+    "overture center-promenade hall":        _OVERTURE,
+    "overture center-promenade lobby":       _OVERTURE,
+    "overture center-rotunda stage":         _OVERTURE,
+    "overture center-the playhouse":         _OVERTURE,
+    "overture center-james watrous gallery": _OVERTURE,
 }
 
 
@@ -95,6 +95,21 @@ def lookup(venue_name: Optional[str]) -> Optional[CanonicalVenue]:
     if key is None:
         return None
     return CANONICAL_VENUES.get(key)
+
+
+def normalize_name(venue_name: Optional[str]) -> Optional[str]:
+    """Return the canonical display name for ``venue_name``.
+
+    If the registry entry has a ``canonical_name`` set (e.g. a sub-room or
+    alias entry), returns that name. Otherwise returns ``venue_name``
+    unchanged so callers can always use the return value directly.
+    """
+    if not venue_name:
+        return venue_name
+    entry = lookup(venue_name)
+    if entry is not None and entry.canonical_name is not None:
+        return entry.canonical_name
+    return venue_name
 
 
 def canonical_keys() -> list[str]:

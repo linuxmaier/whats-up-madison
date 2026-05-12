@@ -45,8 +45,14 @@ class IsthmusSource(BaseSource):
         # today's events from the scrape window.
         today = datetime.now(_CENTRAL).date()
         end_date = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)
+
+        ical_resp = http_get_with_retry(_ICAL_URL, timeout=30)
+        if not ical_resp.content.strip():
+            logger.warning("Isthmus: iCal feed returned empty response; falling back to RSS")
+            return _build_events_from_rss(today, end_date)
+
         url_map, title_date_map = _build_url_map(today, end_date)
-        return _parse_ical(today, end_date, url_map, title_date_map)
+        return _parse_ical(today, end_date, url_map, title_date_map, ical_content=ical_resp.content)
 
 
 def _parse_rss_title(title: str) -> tuple[str, str]:
@@ -116,14 +122,93 @@ def _to_aware_datetime(dt: date | datetime) -> datetime:
     return datetime(dt.year, dt.month, dt.day, tzinfo=_CENTRAL)
 
 
+def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
+    """Build RawEvents directly from RSS items when the iCal feed is unavailable.
+
+    The RSS occ_dtstart query param includes the local time (e.g. 2026-05-12T19:30)
+    so we can produce properly-timed events without the iCal feed."""
+    events: list[RawEvent] = []
+    page = 1
+    while True:
+        resp = http_get_with_retry(_RSS_BASE, params={"page": page}, timeout=30)
+        if not resp.content.strip():
+            break
+        root = ET.fromstring(resp.content)
+        items = root.findall(".//item")
+        if not items:
+            break
+
+        all_beyond_window = True
+        for item in items:
+            link = item.findtext("link") or ""
+            title_raw = item.findtext("title") or ""
+            qs = parse_qs(urlparse(link).query)
+            occ = qs.get("occ_dtstart", [None])[0]
+            if not occ:
+                continue
+
+            event_date = date.fromisoformat(occ[:10])
+            if event_date <= end:
+                all_beyond_window = False
+            if not (start <= event_date <= end):
+                continue
+
+            # RSS title format: "Event Name - Date [time] [@ Venue]"
+            dash_idx = title_raw.find(" - ")
+            if dash_idx == -1:
+                event_name = title_raw.strip()
+                venue_name = None
+            else:
+                event_name = title_raw[:dash_idx].strip()
+                suffix = title_raw[dash_idx + 3:]
+                at_idx = suffix.rfind(" @ ")
+                venue_name = suffix[at_idx + 3:].strip() if at_idx != -1 else None
+
+            if not event_name:
+                continue
+
+            if "T" in occ:
+                try:
+                    start_at = datetime.fromisoformat(occ).replace(tzinfo=_CENTRAL)
+                    all_day = False
+                except ValueError:
+                    start_at = datetime(event_date.year, event_date.month, event_date.day, tzinfo=_CENTRAL)
+                    all_day = True
+            else:
+                start_at = datetime(event_date.year, event_date.month, event_date.day, tzinfo=_CENTRAL)
+                all_day = True
+
+            description = _fetch_full_description(link)
+            time.sleep(_FETCH_DELAY)
+
+            events.append(RawEvent(
+                title=event_name,
+                start_at=start_at,
+                venue_name=venue_name or None,
+                description=description,
+                source_name="Isthmus",
+                source_url=link,
+                all_day=all_day,
+            ))
+
+        if all_beyond_window:
+            break
+        page += 1
+
+    logger.info("Isthmus RSS fallback: built %d events", len(events))
+    return events
+
+
 def _parse_ical(
     start: date,
     end: date,
     url_map: dict[tuple[str, str, str], str],
     title_date_map: dict[tuple[str, str], str],
+    ical_content: bytes | None = None,
 ) -> list[RawEvent]:
-    resp = http_get_with_retry(_ICAL_URL, timeout=30)
-    cal = Calendar.from_ical(resp.content)
+    if ical_content is None:
+        ical_content = http_get_with_retry(_ICAL_URL, timeout=30).content
+    cal = Calendar.from_ical(ical_content)
 
     events = []
     short_count = enriched_count = failed_count = 0

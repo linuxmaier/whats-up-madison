@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -15,6 +16,23 @@ _WINDOW_DAYS = 30
 _PAGE_SIZE = 200  # Discovery API max
 _PAGE_SLEEP_SECONDS = 0.25  # well under the 5 req/s rate limit
 _DROP_STATUSES: frozenset[str] = frozenset({"cancelled", "postponed"})
+
+# US state code → full lowercase name for canonical URL slug construction.
+_STATE_NAMES: dict[str, str] = {
+    "AL": "alabama", "AK": "alaska", "AZ": "arizona", "AR": "arkansas",
+    "CA": "california", "CO": "colorado", "CT": "connecticut", "DE": "delaware",
+    "FL": "florida", "GA": "georgia", "HI": "hawaii", "ID": "idaho",
+    "IL": "illinois", "IN": "indiana", "IA": "iowa", "KS": "kansas",
+    "KY": "kentucky", "LA": "louisiana", "ME": "maine", "MD": "maryland",
+    "MA": "massachusetts", "MI": "michigan", "MN": "minnesota", "MS": "mississippi",
+    "MO": "missouri", "MT": "montana", "NE": "nebraska", "NV": "nevada",
+    "NH": "new-hampshire", "NJ": "new-jersey", "NM": "new-mexico", "NY": "new-york",
+    "NC": "north-carolina", "ND": "north-dakota", "OH": "ohio", "OK": "oklahoma",
+    "OR": "oregon", "PA": "pennsylvania", "RI": "rhode-island", "SC": "south-carolina",
+    "SD": "south-dakota", "TN": "tennessee", "TX": "texas", "UT": "utah",
+    "VT": "vermont", "VA": "virginia", "WA": "washington", "WV": "west-virginia",
+    "WI": "wisconsin", "WY": "wyoming", "DC": "district-of-columbia",
+}
 
 # Conservative segment/genre → our taxonomy mapping. Lookup order is
 # (segment, genre) first, then (segment, None). Anything unmapped is dropped
@@ -152,6 +170,33 @@ def _map_categories(classifications: list[dict]) -> list[str]:
     return [mapped] if mapped else []
 
 
+def _event_slug(s: str) -> str:
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9\s]", "", s)
+    return re.sub(r"\s+", "-", s.strip())
+
+
+def _build_canonical_url(title: str, event_date: date, venue: dict, event_id: str) -> str | None:
+    """Construct a Ticketmaster canonical event URL from event metadata.
+
+    The Discovery API returns short /event/<id> URLs that fail for some users
+    due to Imperva bot-detection. The full slug URL
+    (/name-city-state-MM-DD-YYYY/event/<id>) is what TM shows in browser
+    address bars and is more reliably resolvable."""
+    if not event_id:
+        return None
+    city = ((venue.get("city") or {}).get("name") or "").strip()
+    state_code = ((venue.get("state") or {}).get("stateCode") or "").strip()
+    if not city or not state_code:
+        return None
+    state_name = _STATE_NAMES.get(state_code, state_code.lower())
+    slug = (
+        f"{_event_slug(title)}-{_event_slug(city)}-{state_name}"
+        f"-{event_date.strftime('%m-%d-%Y')}"
+    )
+    return f"https://www.ticketmaster.com/{slug}/event/{event_id}"
+
+
 def _parse_event(doc: dict) -> RawEvent | None:
     dates = doc.get("dates") or {}
     status = ((dates.get("status") or {}).get("code") or "").strip().lower()
@@ -159,8 +204,7 @@ def _parse_event(doc: dict) -> RawEvent | None:
         return None
 
     title = (doc.get("name") or "").strip()
-    source_url = (doc.get("url") or "").strip()
-    if not title or not source_url:
+    if not title:
         return None
 
     venues = (doc.get("_embedded") or {}).get("venues") or []
@@ -201,6 +245,14 @@ def _parse_event(doc: dict) -> RawEvent | None:
     venue_address = _build_address(venue)
     image_url = _select_image(doc.get("images") or [])
     categories = _map_categories(doc.get("classifications") or [])
+
+    event_id = (doc.get("id") or "").strip()
+    source_url = (
+        _build_canonical_url(title, event_date, venue, event_id)
+        or (doc.get("url") or "").strip()
+    )
+    if not source_url:
+        return None
 
     return RawEvent(
         title=title,
