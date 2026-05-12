@@ -137,12 +137,15 @@ Scrapers don't need to do anything special — populating `RawEvent.venue_addres
 
 #### Canonical venue registry (`backend/app/canonical_venues.py`)
 
-A small allowlist of well-known Madison venues (High Noon Saloon, The Sylvee, Majestic, Orpheum, Barrymore, Overture Center) maps `venue_name` → known-good `(latitude, longitude, address)`. Two consumers use it:
+A small allowlist of well-known Madison venues (High Noon Saloon, The Sylvee, Majestic, Orpheum, Barrymore, Overture Center) maps `venue_name` → known-good `(latitude, longitude, address, canonical_name)`. Three consumers use it:
 
 - `geocode_event` consults the registry **before** the cache or Nominatim — short-circuits the network call entirely, immune to upstream address quirks, and corrects already-bad coordinates on the next geocode pass.
 - `ingest_events` overwrites `Event.venue_address` with the canonical address when `venue_name` matches, regardless of source-priority merge semantics. This was added because Visit Madison sometimes ships malformed addresses (e.g. `701A E Washington Ave` for High Noon) that snap to wrong coordinates and clutter the displayed address card.
+- `ingest_events` also normalizes `venue_name` to the entry's `canonical_name` (when set) **before hashing**, so events from sources that use sub-room or alias names merge with events from sources that use the building name. For example, Isthmus's "Overture Center-Overture Hall" and Ticketmaster's "Overture Center for the Arts" both normalize to "Overture Center for the Arts" before dedup runs.
 
-To add a venue: lowercase the name as it appears in `Event.venue_name`, curl Nominatim with the canonical address to get verified coordinates, then add an entry. Add alt spellings (e.g. "orpheum theater" vs "orpheum theatre") as separate keys — matching is exact after lowercase + trim.
+`CanonicalVenue.canonical_name` is `None` for entries that are already the canonical form; set it only on alias/sub-room entries. All Overture sub-room entries (bare names like "Overture Hall", "Capitol Theater", and Isthmus-style compound names like "Overture Center-Overture Hall") carry `canonical_name = "Overture Center for the Arts"` and all point to a shared `_OVERTURE` sentinel so coordinates aren't duplicated.
+
+To add a venue: lowercase the name as it appears in `Event.venue_name`, curl Nominatim with the canonical address to get verified coordinates, then add an entry. Add alt spellings as separate keys pointing to the same `CanonicalVenue`. For sub-rooms or aliases that should collapse to a building name for dedup purposes, set `canonical_name` on those entries.
 
 ### Tagging (`backend/app/tagger.py`)
 
