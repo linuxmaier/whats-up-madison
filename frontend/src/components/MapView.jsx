@@ -76,7 +76,7 @@ export default function MapView({ events, stickyTop = 0, fillHeight = false }) {
   )
 
   const mapContainerStyle = fillHeight
-    ? { flex: 1, minHeight: '400px' }
+    ? { flex: 1, minHeight: 0 }
     : { height: `calc(100vh - ${stickyTop + 32}px)`, minHeight: '400px' }
 
   return (
@@ -119,7 +119,7 @@ export default function MapView({ events, stickyTop = 0, fillHeight = false }) {
             {noLocEvents.length} event{noLocEvents.length === 1 ? '' : 's'} without a location {showNoLoc ? '▲' : '▼'}
           </button>
           {showNoLoc && (
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-2 space-y-1 overflow-y-auto" style={{ maxHeight: '40vh' }}>
               {noLocEvents.map(e => (
                 <li key={e.id}>
                   <button
