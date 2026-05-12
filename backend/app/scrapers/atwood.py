@@ -32,8 +32,9 @@ _DESC_DOORS_RE = re.compile(
 class AtwoodMusicHallSource(BaseSource):
     name = "Atwood Music Hall"
     scraper_type = "html"
+    supports_window_days = False
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         resp = http_get_with_retry(_CALENDAR_URL, timeout=30)
         soup = BeautifulSoup(resp.content, "lxml")
         events: list[RawEvent] = []

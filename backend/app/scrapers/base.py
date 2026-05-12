@@ -79,6 +79,10 @@ def clean_html_text(s: str) -> str:
 class BaseSource:
     name: str = ""
     scraper_type: str = ""
+    # False when the source has no controllable forward-window (HTML calendar
+    # pages that just render what's posted). The /admin/scrape endpoint uses
+    # this to flag in its response that the `days` filter was a no-op.
+    supports_window_days: bool = True
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         raise NotImplementedError

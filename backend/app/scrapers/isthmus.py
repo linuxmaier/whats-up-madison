@@ -39,12 +39,12 @@ class IsthmusSource(BaseSource):
     name = "Isthmus"
     scraper_type = "ical"
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         # Use Central time, not the container's clock — backend runs in UTC, so
         # date.today() returns tomorrow's date after ~7 PM Central, cutting off
         # today's events from the scrape window.
         today = datetime.now(_CENTRAL).date()
-        end_date = today + timedelta(days=_WINDOW_DAYS)
+        end_date = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)
         url_map, title_date_map = _build_url_map(today, end_date)
         return _parse_ical(today, end_date, url_map, title_date_map)
 
