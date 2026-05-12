@@ -2,10 +2,10 @@ import EventCard from './EventCard'
 import { localHour } from '../lib/eventTime'
 
 const TINTS = {
-  morning: 'bg-amber-50 border-amber-200 text-amber-900',
-  afternoon: 'bg-sky-50 border-sky-200 text-sky-900',
-  evening: 'bg-indigo-50 border-indigo-200 text-indigo-900',
-  night: 'bg-slate-100 border-slate-300 text-slate-800',
+  morning: 'bg-amber-100 border-amber-300 text-amber-800 shadow-sm',
+  afternoon: 'bg-sky-100 border-sky-300 text-sky-800 shadow-sm',
+  evening: 'bg-indigo-100 border-indigo-300 text-indigo-800 shadow-sm',
+  night: 'bg-slate-200 border-slate-400 text-slate-900 shadow-sm',
 }
 
 function formatHour(h) {
@@ -42,9 +42,9 @@ export default function BucketSection({ id, label, events, stickyTop }) {
         <div key={hour}>
           {i > 0 && (
             <div className="flex items-center gap-3 mt-4 mb-1">
-              <div className="flex-1 border-t border-gray-200" />
-              <span className="text-xs text-gray-400">{formatHour(hour)}</span>
-              <div className="flex-1 border-t border-gray-200" />
+              <div className="flex-1 border-t border-blue-100" />
+              <span className="text-xs text-gray-500">{formatHour(hour)}</span>
+              <div className="flex-1 border-t border-blue-100" />
             </div>
           )}
           <div id={`hour-${hour}`} className="scroll-mt-40" />

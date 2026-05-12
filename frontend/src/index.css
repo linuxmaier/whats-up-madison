@@ -2,34 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* === Madison themes === */
+/* === Flamingo Lake — Madison's lakes + the city's official bird === */
 :root {
-  --c-brand: #1B5299;
-  --c-brand-dark: #154280;
-  --c-brand-light: #e8f0fb;
-  --c-accent: #D97706;
-  --c-page-bg: #dbeafe;
-}
-[data-theme="forward"] {
-  --c-brand: #1e3a5f;
-  --c-brand-dark: #162d4c;
-  --c-brand-light: #eef2f8;
-  --c-accent: #ec4899;
-  --c-page-bg: #fce7f3;
-}
-[data-theme="violet"] {
-  --c-brand: #6d28d9;
-  --c-brand-dark: #5b21b6;
-  --c-brand-light: #ede9fe;
-  --c-accent: #f59e0b;
-  --c-page-bg: #ede9fe;
-}
-[data-theme="green"] {
-  --c-brand: #065F46;
-  --c-brand-dark: #044d38;
-  --c-brand-light: #d1fae5;
-  --c-accent: #D97706;
-  --c-page-bg: #d1fae5;
+  --c-brand: #1565C0;       /* Lake Mendota blue */
+  --c-brand-dark: #0d47a1;  /* Deep water */
+  --c-brand-light: #e3f2fd; /* Pale lake */
+  --c-accent: #e05585;      /* Flamingo pink */
+  --c-page-bg: #fdf0f6;     /* Pale rose blush */
 }
 
 /* Leaflet cluster badge — inner circle uses brand color, outer ring uses tint */

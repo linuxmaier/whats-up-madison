@@ -90,7 +90,7 @@ export default function DatePicker({ value, onChange, onDark = false }) {
   const firstDay = viewYear !== null ? getFirstDayOfWeek(viewYear, viewMonth) : 0
 
   const navBtnClass = onDark
-    ? 'px-2 py-1 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded transition-colors'
+    ? 'px-2 py-1 text-sm bg-white/10 text-white hover:bg-white/20 rounded transition-colors'
     : 'px-2 py-1 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors'
 
   return (

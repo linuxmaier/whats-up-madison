@@ -60,7 +60,7 @@ export default function VenueFilter({ allVenues, hiddenVenues, onChange }) {
         className={`px-2 py-1 text-sm rounded border transition-colors flex items-center gap-1 ${
           showBadge
             ? 'border-brand text-brand bg-brand-light hover:bg-brand-light'
-            : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
         }`}
         aria-expanded={open}
         aria-haspopup="dialog"

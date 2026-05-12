@@ -33,22 +33,6 @@ function loadViewMode() {
   }
 }
 
-const THEME_KEY = 'whats-up-madison.theme'
-const THEMES = [
-  { id: 'lake-town', label: 'Lake Town',    color: '#1B5299' },
-  { id: 'forward',   label: 'Forward',      color: '#ec4899' },
-  { id: 'violet',    label: 'State St.',    color: '#6d28d9' },
-  { id: 'green',     label: 'Cap. Green',   color: '#065F46' },
-]
-function loadTheme() {
-  try {
-    const t = localStorage.getItem(THEME_KEY)
-    return THEMES.find((th) => th.id === t) ? t : 'lake-town'
-  } catch {
-    return 'lake-town'
-  }
-}
-
 const BUCKETS = [
   { id: 'morning', label: 'Morning', startHour: 5, endHour: 12 },
   { id: 'afternoon', label: 'Afternoon', startHour: 12, endHour: 17 },
@@ -64,9 +48,9 @@ function bucketForHour(hour) {
   return 'morning'
 }
 
-function CapitolIcon({ className, style }) {
+function CapitolIcon({ className }) {
   return (
-    <svg viewBox="0 0 20 20" className={className} style={style} fill="currentColor" aria-hidden="true">
+    <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
       <rect x="9.5" y="0" width="1" height="2.5" rx="0.5"/>
       <rect x="8.5" y="2" width="3" height="1.5" rx="0.5"/>
       <path d="M3.5 9 Q10 2.5 16.5 9Z"/>
@@ -91,12 +75,6 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState(null)
-  const [theme, setThemeState] = useState(loadTheme)
-
-  function setTheme(id) {
-    setThemeState(id)
-    try { localStorage.setItem(THEME_KEY, id) } catch { /* ignore quota */ }
-  }
 
   const trimmedQuery = searchQuery.trim()
   const isSearching = trimmedQuery.length > 0
@@ -206,11 +184,8 @@ export default function App() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const themeAttr = theme === 'lake-town' ? undefined : theme
-
   return (
     <div
-      data-theme={themeAttr}
       className={isMapMode ? 'h-screen flex flex-col overflow-hidden' : 'min-h-screen'}
       style={{ background: 'var(--c-page-bg)' }}
     >
@@ -225,10 +200,10 @@ export default function App() {
             onClick={() => setSelectedDate(toLocalDateString(new Date()))}
             className="flex items-center gap-2 text-lg font-bold hover:opacity-75 cursor-pointer transition-opacity"
           >
-            <CapitolIcon className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--c-accent)' }} />
+            <CapitolIcon className="w-5 h-5 flex-shrink-0 text-accent" />
             <span>
               <span className="text-white">What&apos;s Up </span>
-              <span style={{ color: 'var(--c-accent)' }}>Madison</span>
+              <span className="text-accent">Madison</span>
             </span>
           </button>
           <div className="flex flex-wrap justify-center sm:flex-nowrap sm:justify-start items-center gap-2">
@@ -270,25 +245,6 @@ export default function App() {
             </div>
           </div>
         </div>
-
-        {/* Theme switcher — remove once a theme is chosen */}
-        <div className="flex items-center justify-center gap-4 px-4 pb-1.5 text-xs">
-          {THEMES.map((th) => (
-            <button
-              key={th.id}
-              type="button"
-              onClick={() => setTheme(th.id)}
-              className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors"
-              aria-pressed={theme === th.id}
-            >
-              <span
-                className={`w-3 h-3 rounded-full inline-block flex-shrink-0 transition-all ${theme === th.id ? 'ring-2 ring-offset-1 ring-white/60' : ''}`}
-                style={{ background: th.color }}
-              />
-              <span className={theme === th.id ? 'font-semibold text-white' : ''}>{th.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className={isMapMode ? 'flex-1 min-h-0 flex flex-col w-full max-w-7xl mx-auto px-4 pt-4' : 'max-w-7xl mx-auto px-4 pt-4 pb-6'}>
@@ -303,13 +259,13 @@ export default function App() {
             />
           ) : (
             <>
-              {loading && <p className="text-gray-200 text-base animate-pulse">Warming up the site because we&apos;re using crappy free tier servers...</p>}
+              {loading && <p className="text-gray-400 text-base animate-pulse">Warming up the site because we&apos;re using crappy free tier servers...</p>}
               {error && <p className="text-red-500 text-sm">Error: {error}</p>}
               {!loading && !error && events.length === 0 && (
-                <p className="text-gray-400 text-sm">No events found for this date.</p>
+                <p className="text-gray-500 text-sm">No events found for this date.</p>
               )}
               {!loading && !error && events.length > 0 && filteredEvents.length === 0 && (
-                <p className="text-gray-400 text-sm">
+                <p className="text-gray-500 text-sm">
                   All {events.length} events for this date are hidden by your filter.
                 </p>
               )}

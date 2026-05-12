@@ -18,7 +18,7 @@ const DensityRail = forwardRef(function DensityRail({ hourCounts, onJumpToHour, 
   if (total === 0) return null
 
   return (
-    <div ref={ref} style={{ top: stickyTop }} className="sticky z-20 bg-gray-50 backdrop-blur border-b border-gray-200 -mx-4 px-4 py-2">
+    <div ref={ref} style={{ top: stickyTop, background: 'var(--c-page-bg)' }} className="sticky z-20 backdrop-blur border-b border-gray-200 -mx-4 px-4 py-2">
       <div className="relative flex gap-px h-12">
         {ORDER.map((h) => {
           const count = hourCounts[h]
@@ -32,7 +32,7 @@ const DensityRail = forwardRef(function DensityRail({ hourCounts, onJumpToHour, 
               disabled={isEmpty}
               aria-label={`${count} event${count === 1 ? '' : 's'} starting at ${formatHourLabel(h)}`}
               title={`${formatHourLabel(h)}: ${count} event${count === 1 ? '' : 's'}`}
-              className={`flex-1 relative h-full min-w-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-1 ${
+              className={`flex-1 relative h-full min-w-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-1 ${
                 isEmpty ? 'cursor-default' : 'cursor-pointer group'
               }`}
             >
@@ -40,7 +40,7 @@ const DensityRail = forwardRef(function DensityRail({ hourCounts, onJumpToHour, 
                 className={`absolute bottom-0 left-0 right-0 rounded-t-sm transition-colors ${
                   isEmpty
                     ? 'bg-gray-200'
-                    : 'bg-blue-400 group-hover:bg-blue-500'
+                    : 'bg-brand group-hover:bg-brand-dark'
                 }`}
                 style={{ height: isEmpty ? '1px' : `${Math.max(6, heightPct)}%` }}
               />
@@ -48,7 +48,7 @@ const DensityRail = forwardRef(function DensityRail({ hourCounts, onJumpToHour, 
           )
         })}
       </div>
-      <div className="relative h-3 mt-1 text-[10px] text-gray-400">
+      <div className="relative h-3 mt-1 text-[10px] text-gray-500">
         {HOUR_TICKS.map((tick) => {
           const idx = ORDER.indexOf(tick.hour)
           const leftPct = (idx / ORDER.length) * 100 + 0.5 / ORDER.length * 100
