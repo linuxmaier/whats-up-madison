@@ -132,8 +132,9 @@ class _ParsedDate:
 class OvertureSource(BaseSource):
     name = _SOURCE_NAME
     scraper_type = "html"
+    supports_window_days = False
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         session, listing_html = _fetch_listing()
         if not listing_html:
             return []

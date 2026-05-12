@@ -53,11 +53,13 @@ class MySource(BaseSource):
     name = "My Source"
     scraper_type = "ical"  # api | ical | html
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         ...
 ```
 
 After writing a scraper, add it to `SCRAPERS` in `backend/app/main.py`. The `POST /admin/scrape` endpoint triggers all registered scrapers.
+
+`fetch()` accepts an optional `window_days` arg so `/admin/scrape?days=N` can narrow the forward window for testing. API/iCal-based scrapers should honor it (`end = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)`); HTML-calendar scrapers that have no controllable window (High Noon, Atwood, Overture) accept the arg, ignore it, and set the class attribute `supports_window_days = False` so the endpoint can flag the no-op in its response.
 
 `RawEvent.canonical_hash()` generates a deduplication key: `sha256(normalized_title|start_date|venue_name)`. Always set `source_name` and `source_url` on every `RawEvent`.
 
@@ -205,6 +207,19 @@ curl -X POST http://localhost:8000/admin/scrape
 
 Returns per-scraper stats including ingestion + geocoding:
 `{"Isthmus": {"inserted": N, "updated": N, "deactivated": N, "geocoded": N, "geocode_misses": N, "geocode_skipped": N}}`.
+
+For faster iteration when changing a single scraper, narrow what runs with query params (all optional, all combinable):
+
+- `scraper=<name>` (repeatable) — run only the named scrapers. Names must match `BaseSource.name` exactly. Unknown names return HTTP 400 with the valid set.
+- `days=<N>` — override the forward window passed to `fetch(window_days=N)`. Honored by the API/iCal scrapers (Isthmus, Visit Madison, Our Lives, Ticketmaster); the HTML scrapers (High Noon Saloon, Atwood Music Hall, Overture Center for the Arts) ignore it and the response includes `"window_days_honored": false` to make that explicit.
+- `skip_geocode=true` — skip the per-source geocoding pass.
+- `skip_tag=true` — skip the global LLM tagging pass.
+
+Example — re-run just Isthmus over the next 3 days with no geocode/tag work:
+
+```
+curl -X POST 'http://localhost:8000/admin/scrape?scraper=Isthmus&days=3&skip_geocode=true&skip_tag=true'
+```
 
 To backfill or retry geocoding outside a scrape: `curl -X POST 'http://localhost:8000/admin/geocode'` (add `?force=true` to clear non-success cache rows and retry previously-failed lookups).
 

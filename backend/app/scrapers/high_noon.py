@@ -39,8 +39,9 @@ _NON_MUSIC_MAP: dict[str, str] = {
 class HighNoonSource(BaseSource):
     name = "High Noon Saloon"
     scraper_type = "html"
+    supports_window_days = False
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         resp = http_get_with_retry(_CALENDAR_URL, timeout=30)
         soup = BeautifulSoup(resp.content, "lxml")
         events: list[RawEvent] = []

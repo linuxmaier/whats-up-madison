@@ -53,9 +53,9 @@ class OurLivesSource(BaseSource):
     name = "Our Lives"
     scraper_type = "api"
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         today = datetime.now(_CENTRAL).date()
-        end = today + timedelta(days=_WINDOW_DAYS)
+        end = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)
         events: list[RawEvent] = []
         page = 1
         while True:

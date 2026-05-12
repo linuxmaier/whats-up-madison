@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from app.ingest import ingest_events
 from app.routers import events
 from app.schemas import FeedbackRequest
 from app.scrapers.atwood import AtwoodMusicHallSource
+from app.scrapers.base import BaseSource
 from app.scrapers.high_noon import HighNoonSource
 from app.scrapers.isthmus import IsthmusSource
 from app.scrapers.our_lives import OurLivesSource
@@ -121,31 +122,73 @@ async def submit_feedback(request: FeedbackRequest):
     return {"ok": True, "issue_url": resp.json()["html_url"]}
 
 
+def _select_scrapers(names: list[str]) -> list[BaseSource]:
+    """Return the SCRAPERS subset matching `names` (exact match on .name).
+
+    Empty `names` means "all". Unknown names → HTTP 400 with the valid set.
+    """
+    if not names:
+        return list(SCRAPERS)
+    by_name = {s.name: s for s in SCRAPERS}
+    unknown = [n for n in names if n not in by_name]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "unknown scraper name(s)",
+                "unknown": unknown,
+                "available": sorted(by_name),
+            },
+        )
+    # Preserve declaration order in SCRAPERS, not the order names were passed,
+    # so repeated runs are deterministic regardless of curl arg order.
+    requested = set(names)
+    return [s for s in SCRAPERS if s.name in requested]
+
+
 @app.post("/admin/scrape")
-def trigger_scrape(_: None = Depends(require_admin_key), db: Session = Depends(get_db)):
+def trigger_scrape(
+    scraper: list[str] = Query(default_factory=list),
+    days: Optional[int] = Query(default=None, ge=1),
+    skip_geocode: bool = False,
+    skip_tag: bool = False,
+    _: None = Depends(require_admin_key),
+    db: Session = Depends(get_db),
+):
+    selected = _select_scrapers(scraper)
     results = {}
-    for scraper in SCRAPERS:
-        logger.info("Starting scrape: %s", scraper.name)
+    for s in selected:
+        logger.info(
+            "Starting scrape: %s (window_days=%s, skip_geocode=%s, skip_tag=%s)",
+            s.name, days, skip_geocode, skip_tag,
+        )
         try:
-            raw = scraper.fetch()
-            stats = ingest_events(scraper.name, raw, db)
-            results[scraper.name] = stats
-            logger.info("Scrape complete: %s — %s", scraper.name, stats)
+            raw = s.fetch(window_days=days)
+            stats = ingest_events(s.name, raw, db)
+            results[s.name] = stats
+            logger.info("Scrape complete: %s — %s", s.name, stats)
         except Exception as e:
-            results[scraper.name] = {"error": str(e)}
-            logger.warning("Scrape failed: %s — %s", scraper.name, e)
+            results[s.name] = {"error": str(e)}
+            logger.warning("Scrape failed: %s — %s", s.name, e)
+            continue
+        if days is not None and not s.supports_window_days:
+            # Surface the no-op so a caller passing ?days=N knows the filter
+            # didn't apply to this HTML-calendar scraper.
+            results[s.name]["window_days_honored"] = False
+        if skip_geocode:
             continue
         try:
-            geo_stats = geocode_missing_for_source(scraper.name, db)
-            results[scraper.name] = {**results[scraper.name], **geo_stats}
-            logger.info("Geocode complete: %s — %s", scraper.name, geo_stats)
+            geo_stats = geocode_missing_for_source(s.name, db)
+            results[s.name] = {**results[s.name], **geo_stats}
+            logger.info("Geocode complete: %s — %s", s.name, geo_stats)
         except Exception as e:
-            results[scraper.name]["geocode_error"] = str(e)
-            logger.warning("Geocode failed: %s — %s", scraper.name, e)
-    try:
-        results["_tagging"] = tag_untagged_events(db)
-    except Exception as e:
-        results["_tagging"] = {"error": str(e)}
+            results[s.name]["geocode_error"] = str(e)
+            logger.warning("Geocode failed: %s — %s", s.name, e)
+    if not skip_tag:
+        try:
+            results["_tagging"] = tag_untagged_events(db)
+        except Exception as e:
+            results["_tagging"] = {"error": str(e)}
     return results
 
 

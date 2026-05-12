@@ -35,12 +35,12 @@ class TicketmasterSource(BaseSource):
     name = "Ticketmaster"
     scraper_type = "api"
 
-    def fetch(self) -> list[RawEvent]:
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         if not settings.ticketmaster_api_key:
             raise ValueError("TICKETMASTER_API_KEY is not set")
 
         today = datetime.now(_CENTRAL).date()
-        end = today + timedelta(days=_WINDOW_DAYS)
+        end = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)
         start_iso = _utc_iso_z(datetime.combine(today, dtime.min, tzinfo=_CENTRAL))
         end_iso = _utc_iso_z(datetime.combine(end, dtime.max, tzinfo=_CENTRAL))
 
