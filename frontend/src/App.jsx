@@ -64,9 +64,9 @@ function bucketForHour(hour) {
   return 'morning'
 }
 
-function CapitolIcon({ className }) {
+function CapitolIcon({ className, style }) {
   return (
-    <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
+    <svg viewBox="0 0 20 20" className={className} style={style} fill="currentColor" aria-hidden="true">
       <rect x="9.5" y="0" width="1" height="2.5" rx="0.5"/>
       <rect x="8.5" y="2" width="3" height="1.5" rx="0.5"/>
       <path d="M3.5 9 Q10 2.5 16.5 9Z"/>
@@ -211,36 +211,41 @@ export default function App() {
   return (
     <div
       data-theme={themeAttr}
-      className={isMapMode ? 'h-screen flex flex-col overflow-hidden bg-gray-50' : 'min-h-screen bg-gray-50'}
+      className={isMapMode ? 'h-screen flex flex-col overflow-hidden' : 'min-h-screen'}
+      style={{ background: 'var(--c-page-bg)' }}
     >
-      <div ref={headerRef} className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
+      <div
+        ref={headerRef}
+        className="sticky top-0 z-30 border-b"
+        style={{ background: 'var(--c-brand)', borderColor: 'rgba(0,0,0,0.15)' }}
+      >
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col items-center gap-y-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <button
             type="button"
             onClick={() => setSelectedDate(toLocalDateString(new Date()))}
             className="flex items-center gap-2 text-lg font-bold hover:opacity-75 cursor-pointer transition-opacity"
           >
-            <CapitolIcon className="w-5 h-5 text-brand flex-shrink-0" />
+            <CapitolIcon className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--c-accent)' }} />
             <span>
-              <span className="text-gray-900">What&apos;s Up </span>
-              <span className="text-brand">Madison</span>
+              <span className="text-white">What&apos;s Up </span>
+              <span style={{ color: 'var(--c-accent)' }}>Madison</span>
             </span>
           </button>
           <div className="flex flex-wrap justify-center sm:flex-nowrap sm:justify-start items-center gap-2">
             <SearchBar value={searchQuery} onChange={setSearchQuery} />
             {!isSearching && (
-              <div className="inline-flex border border-gray-300 rounded overflow-hidden text-sm">
+              <div className="inline-flex border border-white/30 rounded overflow-hidden text-sm">
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 cursor-pointer ${viewMode === 'list' ? 'bg-brand text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  className={`px-3 py-1 cursor-pointer transition-colors ${viewMode === 'list' ? 'bg-white text-brand font-medium' : 'bg-white/10 text-white hover:bg-white/20'}`}
                 >
                   List
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('map')}
-                  className={`px-3 py-1 cursor-pointer ${viewMode === 'map' ? 'bg-brand text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  className={`px-3 py-1 cursor-pointer transition-colors ${viewMode === 'map' ? 'bg-white text-brand font-medium' : 'bg-white/10 text-white hover:bg-white/20'}`}
                 >
                   Map
                 </button>
@@ -259,7 +264,7 @@ export default function App() {
                     hiddenVenues={hiddenVenues}
                     onChange={setHiddenVenues}
                   />
-                  <DatePicker value={selectedDate} onChange={setSelectedDate} />
+                  <DatePicker value={selectedDate} onChange={setSelectedDate} onDark />
                 </>
               )}
             </div>
@@ -267,20 +272,20 @@ export default function App() {
         </div>
 
         {/* Theme switcher — remove once a theme is chosen */}
-        <div className="flex items-center justify-center gap-4 px-4 pb-1.5 text-xs text-gray-500">
+        <div className="flex items-center justify-center gap-4 px-4 pb-1.5 text-xs">
           {THEMES.map((th) => (
             <button
               key={th.id}
               type="button"
               onClick={() => setTheme(th.id)}
-              className="flex items-center gap-1.5 hover:text-gray-700 transition-colors"
+              className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors"
               aria-pressed={theme === th.id}
             >
               <span
-                className={`w-3 h-3 rounded-full inline-block flex-shrink-0 transition-all ${theme === th.id ? 'ring-2 ring-offset-1 ring-gray-400' : ''}`}
+                className={`w-3 h-3 rounded-full inline-block flex-shrink-0 transition-all ${theme === th.id ? 'ring-2 ring-offset-1 ring-white/60' : ''}`}
                 style={{ background: th.color }}
               />
-              <span className={theme === th.id ? 'font-semibold text-gray-700' : ''}>{th.label}</span>
+              <span className={theme === th.id ? 'font-semibold text-white' : ''}>{th.label}</span>
             </button>
           ))}
         </div>

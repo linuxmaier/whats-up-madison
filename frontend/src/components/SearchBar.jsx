@@ -30,7 +30,7 @@ export default function SearchBar({ value, onChange }) {
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search events…"
         aria-label="Search events"
-        className="border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm text-gray-900 placeholder-gray-400 w-44 sm:w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+        className="border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm text-gray-900 placeholder-gray-400 w-44 sm:w-56 focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
       />
       {value && (
         <button

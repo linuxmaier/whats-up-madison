@@ -24,7 +24,7 @@ function getFirstDayOfWeek(year, month) {
   return new Date(year, month, 1).getDay()
 }
 
-export default function DatePicker({ value, onChange }) {
+export default function DatePicker({ value, onChange, onDark = false }) {
   const [open, setOpen] = useState(false)
   const [viewYear, setViewYear] = useState(null)
   const [viewMonth, setViewMonth] = useState(null)
@@ -89,13 +89,13 @@ export default function DatePicker({ value, onChange }) {
   const daysInMonth = viewYear !== null ? getDaysInMonth(viewYear, viewMonth) : 0
   const firstDay = viewYear !== null ? getFirstDayOfWeek(viewYear, viewMonth) : 0
 
+  const navBtnClass = onDark
+    ? 'px-2 py-1 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded transition-colors'
+    : 'px-2 py-1 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors'
+
   return (
     <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => shift(-1)}
-        className="px-2 py-1 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-      >
+      <button type="button" onClick={() => shift(-1)} className={navBtnClass}>
         ← <span className="hidden sm:inline">Previous</span>
       </button>
 
@@ -103,7 +103,7 @@ export default function DatePicker({ value, onChange }) {
         <button
           type="button"
           onClick={openCalendar}
-          className="border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+          className="border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-900 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
         >
           {label}
         </button>
@@ -153,9 +153,9 @@ export default function DatePicker({ value, onChange }) {
                     className={[
                       'w-8 h-8 mx-auto flex items-center justify-center rounded-full text-sm transition-colors',
                       isSelected
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-brand text-white'
                         : isToday
-                          ? 'ring-1 ring-blue-400 text-blue-700 hover:bg-blue-50'
+                          ? 'ring-1 ring-brand text-brand hover:bg-brand-light'
                           : 'text-gray-700 hover:bg-gray-100',
                     ].join(' ')}
                   >
@@ -169,7 +169,7 @@ export default function DatePicker({ value, onChange }) {
               <button
                 type="button"
                 onClick={() => { onChange(todayStr); setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); setOpen(false) }}
-                className="text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                className="text-xs text-brand hover:underline transition-colors"
               >
                 Today
               </button>
@@ -178,11 +178,7 @@ export default function DatePicker({ value, onChange }) {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={() => shift(1)}
-        className="px-2 py-1 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-      >
+      <button type="button" onClick={() => shift(1)} className={navBtnClass}>
         <span className="hidden sm:inline">Next</span> →
       </button>
     </div>
