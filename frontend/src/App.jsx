@@ -77,6 +77,9 @@ export default function App() {
   const isSearching = trimmedQuery.length > 0
   const isMapMode = viewMode === 'map' && !isSearching
 
+  // Measure with getBoundingClientRect (subpixel-precise) rather than
+  // offsetHeight (integer-rounded) so dependent sticky offsets don't drift
+  // on non-integer-DPR mobile screens (#165).
   const headerRef = useRef(null)
   const [railEl, setRailEl] = useState(null)
   const [headerH, setHeaderH] = useState(0)
@@ -85,8 +88,9 @@ export default function App() {
   useLayoutEffect(() => {
     const el = headerRef.current
     if (!el) return
-    setHeaderH(el.offsetHeight)
-    const ro = new ResizeObserver(() => setHeaderH(el.offsetHeight))
+    const measure = () => setHeaderH(el.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
@@ -94,8 +98,9 @@ export default function App() {
   useLayoutEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!railEl) { setRailH(0); return }
-    setRailH(railEl.offsetHeight)
-    const ro = new ResizeObserver(() => setRailH(railEl.offsetHeight))
+    const measure = () => setRailH(railEl.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
     ro.observe(railEl)
     return () => ro.disconnect()
   }, [railEl])
@@ -181,6 +186,14 @@ export default function App() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  // 1px defensive overlap on each downstream sticky element so any leftover
+  // sub-pixel mismatch between the measured height and the actually-rendered
+  // bottom edge of the element above is hidden by the higher-z element. The
+  // header's z-30 covers the rail's z-20; the rail's gradient covers the
+  // bucket headers' z-10.
+  const railTop = Math.max(0, headerH - 1)
+  const bucketTop = Math.max(0, headerH + railH - 1)
+
   return (
     <div
       className={isMapMode ? 'h-screen flex flex-col overflow-hidden' : 'min-h-screen'}
@@ -252,7 +265,7 @@ export default function App() {
               events={searchResults}
               loading={searchLoading}
               error={searchError}
-              stickyTop={headerH}
+              stickyTop={railTop}
             />
           ) : (
             <>
@@ -280,23 +293,23 @@ export default function App() {
                     <>
                       <DensityRail
                         ref={setRailEl}
-                        stickyTop={headerH}
+                        stickyTop={railTop}
                         hourCounts={partition.hourCounts}
                         onJumpToHour={handleJumpToHour}
                       />
-                      <AllDayStrip events={partition.allday} stickyTop={headerH + railH} />
+                      <AllDayStrip events={partition.allday} stickyTop={bucketTop} />
                       {BUCKETS.map((b) => (
                         <BucketSection
                           key={b.id}
                           id={b.id}
                           label={b.label}
                           events={partition[b.id]}
-                          stickyTop={headerH + railH}
+                          stickyTop={bucketTop}
                         />
                       ))}
                     </>
                   ) : (
-                    <MapView events={filteredEvents} stickyTop={headerH} fillHeight />
+                    <MapView events={filteredEvents} stickyTop={railTop} fillHeight />
                   )}
                 </>
               )}
