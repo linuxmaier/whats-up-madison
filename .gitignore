@@ -29,7 +29,9 @@ frontend/.wrangler/
 # Local machine-specific
 local_management/
 .claude_scripts/
-.claude/
+# Per-user Claude Code settings stay local; project-shared skills are checked in.
+.claude/*
+!.claude/skills/
 
 # OS
 .DS_Store

@@ -204,6 +204,12 @@ npm run build    # production build
 ~/miniconda3/envs/whats-up-madison/bin/ruff check backend/
 ```
 
+## Skills
+
+Project-local Claude Code skills live in `.claude/skills/`. Each skill is a directory with a `SKILL.md` and any bundled scripts/references. They are auto-discovered when working in this repo with Claude Code.
+
+- **`audit-event-accuracy`** — samples events from the production API, fetches each event's source URL(s), and files GitHub issues for two kinds of finding: (1) field-accuracy mismatches between ingested data and the primary-source page, and (2) source-priority concerns where a lower-trust source has materially richer data than the higher-trust one. Issues are labeled `accuracy-audit` and deduped by event ID (field-accuracy) or source-pair (priority). Invoke with `/audit-event-accuracy`.
+
 ## Triggering a Scrape (Dev)
 
 **Default to targeted runs when iterating on scraper code.** A full no-arg `/admin/scrape` runs all seven sources, geocodes everything new via Nominatim, then runs the LLM tagger over every untagged event — multiple minutes plus real Anthropic + OSM spend. Most scraper changes only need to verify one source's `fetch()` output, so pass `?scraper=<name>&days=<small N>&skip_geocode=true&skip_tag=true` and drop the flags only for end-to-end checks or the scheduled job.
