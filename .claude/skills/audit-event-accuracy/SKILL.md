@@ -21,8 +21,10 @@ All work runs against the **production deployment** at `https://whats-up-madison
 Run the bundled sampler against production:
 
 ```bash
-python .claude/skills/audit-event-accuracy/scripts/sample_events.py --per-source 3
+~/miniconda3/envs/whats-up-madison/bin/python .claude/skills/audit-event-accuracy/scripts/sample_events.py --per-source 3
 ```
+
+(The script is stdlib-only, so any Python 3.10+ works in principle. Use the conda env's interpreter explicitly — `python` is not reliably on `PATH` on the maintainer's machine and the project convention in `CLAUDE.md` is to use the conda env's full path for all project tooling.)
 
 The script fetches `GET /events?date=` for 7 forward dates spread across the next 14 days, deduplicates by event ID, buckets events by their primary source, and emits JSONL on stdout — one line per sampled event. Each record carries `id`, `title`, `start_at`, `end_at`, `all_day`, `venue_name`, `venue_address`, `categories`, `image_url`, the full `sources` array, a 500-char `description_preview`, and a `description_truncated` flag.
 
