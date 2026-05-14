@@ -89,9 +89,9 @@ These cover many venues and event types from a single source. Highest leverage i
 
 ### Bandsintown
 - URL: https://www.bandsintown.com/c/madison-wi
-- Scraper type prospect: api
-- Status: **investigating**
-- Notes: Concert aggregator with a public API. Good fallback for music coverage if direct venue scrapers miss anything.
+- Scraper type: api → none
+- Status: **rejected**
+- Reason: Investigated for #76 in May 2026 and ruled out on three independent grounds. (1) The public REST API at `rest.bandsintown.com` is **artist-centric only** — the documented event endpoint is `GET /v3.1/artists/{name}/events?app_id=...`, with no city/location discovery route. Probing `/v3.1/cities/madison-wi/events`, `/v4/...`, and the retired `api.bandsintown.com/v2/events.json?location=...` all return `MissingAuthenticationTokenException` (route does not exist on the public API gateway). City-wide aggregation would require us to maintain a manual artist allowlist, which defeats the point of a fallback aggregator. (2) `www.bandsintown.com/c/madison-wi` is fronted by **Cloudflare** and returns the "Sorry, you have been blocked" interstitial (HTTP 403, `cf-ray` set) from a non-datacenter residential IP — Fly.io's range will be blocked at least as aggressively (same failure pattern that retired Overture in #162 and Eventbrite in #182), so HTML scraping isn't a viable path either. (3) Bandsintown's location-aware **Partner API** exists but is B2B/approval-gated, pitched at venue/promoter partners rather than third-party aggregators, and would impose a different ToS than the public API. Coverage gap is acceptable: Madison's ticketed concert volume is already covered by the **Ticketmaster** (Sylvee, Majestic, Orpheum, Barrymore, Overture, Kohl Center), **High Noon Saloon**, and **Atwood Music Hall** scrapers, with DIY/independent shows surfaced via **Isthmus**. Revisit only if (a) Bandsintown reopens a public city-search API or (b) we gain a non-datacenter egress path (residential proxy, Cloudflare Worker fetch) *and* find a documented HTML or feed surface that carries city-keyed event data.
 
 ---
 
