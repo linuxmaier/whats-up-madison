@@ -5,7 +5,7 @@ description: This skill should be used when the user asks to "audit event accura
 
 # Audit Event Accuracy
 
-Audit production ingest quality for What's Up Madison by sampling events from the live API, fetching their primary-source pages, and comparing what was ingested against what the source actually publishes. File one GitHub issue per finding so individual defects can be triaged and closed independently.
+Audit production ingest quality for What's Up Madison by sampling events from the live API, fetching their primary-source pages, and comparing what was ingested against what the source actually publishes. File findings as GitHub issues — grouped per root cause so related events pile into one issue rather than fragmenting across many.
 
 The audit has two distinct goals:
 
@@ -15,6 +15,12 @@ The audit has two distinct goals:
 All work runs against the **production deployment** at `https://whats-up-madison.fly.dev` — that's the data users see, and the only thing worth auditing.
 
 ## Workflow
+
+### 0. Load the exceptions file
+
+Read `audit-exceptions.md` (sibling to this SKILL.md) **before** sampling. It is the running list of patterns the skill should treat as intentional and skip. Keep its contents in mind during the per-event audit — when a sampled event matches an entry, do not file an issue, and note the skip in the per-source summary line (see step 4) so the suppression is visible.
+
+If the file is missing, proceed as if it had no entries.
 
 ### 1. Sample events
 
@@ -67,37 +73,48 @@ Two finding kinds, two issue templates. Create the label first if needed:
 gh label create accuracy-audit --color BFD4F2 --description "Findings from /audit-event-accuracy" 2>/dev/null || true
 ```
 
-#### Field-accuracy issues (one per event × failing field)
+#### Field-accuracy issues (one per source × field, append events on repeat)
 
-**Dedup first.** A finding with the same event ID and the same finding kind on an open issue means we've already filed it.
+**Group, don't fragment.** Multiple events showing the same `(primary_source, field)` mismatch almost always share a root cause (one scraper bug, one parsing rule). File them as a single issue with each event as an example, the way the source-priority section does — opening one issue per event creates triage noise (see #174/#175/#176).
+
+The dedup query is by title:
 
 ```bash
 gh issue list --label accuracy-audit --state open --json number,title,body \
-  --jq '.[] | select(.body | contains("<event-id>") and contains("field-accuracy"))'
+  --jq '.[] | select(.title == "Audit: <field> mismatches on <Source> events")'
 ```
 
-If empty, file:
+If no open issue exists, create one:
 
 ```bash
 gh issue create \
   --label accuracy-audit \
-  --title "Audit: <field> mismatch on '<event title>'" \
+  --title "Audit: <field> mismatches on <Source> events" \
   --body "$(cat <<'EOF'
 **Kind:** field-accuracy
-**Event ID:** <uuid>
+**Primary source:** <Source Name>
 **Field:** <title|start_at|end_at|venue_name|venue_address|description|categories|image_url>
-**Primary source:** <Source Name> — <source_url>
-**Other sources:** <list, if any>
 
-**Source page shows:** <what the source actually says>
-**Ingested as:** <what's in the DB>
+**Pattern:** <one line shared across all examples — e.g. "High Noon descriptions contain only the FPC LIVE heading; the artist bio body is dropped.">
 
-**Hypothesis:** <one line — e.g. "Visit Madison description appears truncated at character 500; check Simpleview API response handling.">
+**Hypothesis:** <one line — e.g. "Description-selector in `backend/app/scrapers/high_noon.py` stops at the heading block.">
 
-API: https://whats-up-madison.fly.dev/events?date=<YYYY-MM-DD>
+## Example events
+
+### <event title> (<event-id>)
+- Source URL: <source_url>
+- Other sources: <list, if any>
+- Source page shows: <what the source actually says>
+- Ingested as: <what's in the DB>
+- API: https://whats-up-madison.fly.dev/events?date=<YYYY-MM-DD>
+
 EOF
 )"
 ```
+
+If an open issue already exists for the `(source, field)` pair, **append** the new example block to its body — same API PATCH dance as the source-priority section below. Before appending, scan the existing examples: if the new finding's root cause clearly differs from the documented Pattern (e.g., the open issue is about truncation but the new event has an HTML-escaping bug), open a new issue with a more specific title like `Audit: <field> mismatches on <Source> events — <pattern qualifier>` rather than mixing causes.
+
+When you do append, also check whether the new example adds information. If the existing issue already has three examples illustrating the same pattern, a fourth identical one is noise — skip it and just count it toward the summary's "duplicates skipped".
 
 #### Source-priority issues (one per source pair, append events on repeat)
 
@@ -143,10 +160,18 @@ gh api repos/<owner>/<name>/issues/<n> --method PATCH --field body="$NEW_BODY"
 After processing all sampled events, output one line per source:
 
 ```
-Isthmus: 3 audited, 1 field-mismatch, 0 priority concerns, 1 issue filed, 0 duplicates skipped
-Visit Madison: 3 audited, 0 field-mismatches, 1 priority concern, 1 issue filed (appended to existing pair issue)
+Isthmus: 3 audited, 1 field-mismatch, 0 priority concerns, 1 issue filed, 0 duplicates skipped, 0 suppressed by audit-exceptions
+Visit Madison: 3 audited, 0 field-mismatches, 1 priority concern, 1 issue filed (appended to existing pair issue), 1 suppressed by audit-exceptions
 …
 ```
+
+Make the `suppressed by audit-exceptions` count visible per source so the maintainer can tell when a rule is doing real work (or when a stale rule is hiding a regression).
+
+### 5. Grow `audit-exceptions.md` when prompted
+
+If during this run — or in a later session — the maintainer says a finding is intentional (e.g., "ignore that, it's by design", "we don't want those bios", a closed issue tagged wontfix), **offer** to add an entry to `audit-exceptions.md` and only write it after confirmation. Follow the file's stated entry format: **Rule / Reason / Applies to / Recorded**. Include the originating issue numbers in **Recorded** when there are any, so a future reader can find the context.
+
+When proposing the new entry, draft the **Rule** narrowly so the skill still catches genuine regressions of the same field on the same source — see the existing High Noon entry for the right level of specificity.
 
 ## Conventions and gotchas
 
@@ -159,3 +184,4 @@ Visit Madison: 3 audited, 0 field-mismatches, 1 priority concern, 1 issue filed 
 ## Files
 
 - **`scripts/sample_events.py`** — fetches and emits the JSONL sample. Stdlib only.
+- **`audit-exceptions.md`** — running list of intentional, do-not-flag patterns (overall + per-source). Loaded at step 0 of every audit; grown at step 5 when the maintainer confirms a finding is by design.
