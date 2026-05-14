@@ -102,7 +102,7 @@ def _base_doc(**overrides) -> dict:
     """Minimal shape matching a real DMI Tribe Events API response.
 
     HTML-entity-encoded title preserved verbatim from the live API response —
-    DMI does NOT decode entities server-side (unlike Our Lives).
+    the DMI Tribe Events feed does not decode entities server-side.
     """
     doc = {
         "title": "What&#8217;s Up Downtown",
@@ -144,7 +144,7 @@ class TestParseEvent:
         assert ev.source_url == "https://downtownmadison.org/event/whats-up-downtown-2026-05-28/"
 
     def test_html_entity_title_decoded(self):
-        # The defining behavioral difference from Our Lives' parser.
+        # Both Tribe-backed scrapers (DMI and Our Lives) decode title entities.
         ev = _parse_event(_base_doc(title="2026 DMI Annual Celebration &amp; Awards"))
         assert ev is not None
         assert ev.title == "2026 DMI Annual Celebration & Awards"
