@@ -171,6 +171,57 @@ def test_unrelated_titles_do_not_merge_via_substring(db):
     assert db.query(Event).count() == 2
 
 
+def test_madison_city_suffix_normalize_merges(db):
+    # Issue #187: Visit Madison appended " - Madison" to disambiguate a
+    # touring act ("Anberlin - Madison"), while Atwood Music Hall used the
+    # full bill ("Anberlin with Emery, Watashi Wa & Motion Light"). Neither
+    # title is a substring of the other and SequenceMatcher.ratio is ~0.42,
+    # well below the 0.65 threshold, so the two rows were ingested as
+    # separate events despite identical start_at + venue_name. Stripping the
+    # trailing city suffix from the matching key makes the shorter title a
+    # substring of the longer.
+    visit_madison_title = "Anberlin - Madison"
+    atwood_title = "Anberlin with Emery, Watashi Wa & Motion Light"
+
+    ingest_events(
+        "Visit Madison",
+        [_raw(title=visit_madison_title, venue_name="Atwood Music Hall")],
+        db,
+    )
+    ingest_events(
+        "Atwood Music Hall",
+        [_raw(
+            title=atwood_title,
+            venue_name="Atwood Music Hall",
+            source_url="https://www.theatwoodmusichall.com/shows/2026-5-20",
+        )],
+        db,
+    )
+
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+    # Reverse direction: venue scraper first, Visit Madison second — also merges.
+    db.query(EventSource).delete()
+    db.query(Event).delete()
+    db.commit()
+    ingest_events(
+        "Atwood Music Hall",
+        [_raw(title=atwood_title, venue_name="Atwood Music Hall")],
+        db,
+    )
+    ingest_events(
+        "Visit Madison",
+        [_raw(
+            title=visit_madison_title,
+            venue_name="Atwood Music Hall",
+            source_url="https://www.visitmadison.com/event/anberlin-madison/76278/",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 1
+
+
 def test_ampersand_and_normalize_merges_substring(db):
     # Issue #191: Visit Madison shipped two listings for the same Karben4 trivia
     # night, "Brews & Q's Taproom Trivia at Karben4" and "Brews and Q's". The
