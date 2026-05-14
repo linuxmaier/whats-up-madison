@@ -191,6 +191,19 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
     return stats
 
 
+def _normalize_title_for_match(title: str) -> str:
+    """Lowercase + strip + collapse ' & ' to ' and ' so the fuzzy substring
+    check (and SequenceMatcher ratio) treats the two as the same token.
+
+    Targets the literal pattern (with surrounding spaces) so compound tokens
+    like "L&G" aren't mangled. Added for #191, where Visit Madison shipped
+    two listings for the same Karben4 trivia night as "Brews & Q's Taproom
+    Trivia at Karben4" and "Brews and Q's" — the shorter title is only a
+    substring of the longer after this normalization.
+    """
+    return title.lower().strip().replace(" & ", " and ")
+
+
 def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
     """Return an existing Event that is likely the same real-world event as raw.
 
@@ -216,11 +229,11 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
     if not candidates:
         return None
 
-    raw_title = raw.title.lower().strip()
+    raw_title = _normalize_title_for_match(raw.title)
     best: "Event | None" = None
     best_ratio = 0.0
     for event in candidates:
-        cand_title = event.title.lower().strip()
+        cand_title = _normalize_title_for_match(event.title)
         ratio = SequenceMatcher(None, raw_title, cand_title).ratio()
         # When one title is fully contained in the other (e.g. "Pert Near
         # Sandstone" vs "Pert Near Sandstone-Side by Side Album Release …"),
