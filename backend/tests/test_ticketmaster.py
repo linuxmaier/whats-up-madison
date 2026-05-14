@@ -5,9 +5,67 @@ from zoneinfo import ZoneInfo
 from app.scrapers.ticketmaster import (
     _CENTRAL,
     _build_address,
+    _choose_description,
     _map_categories,
     _parse_event,
     _select_image,
+)
+
+
+# Literal venue boilerplate copy harvested from the Discovery API responses
+# that drove audit issues #177 (Rebirth Brass Band) and #178 (Highly Suspect).
+# Asserting these collapse to ``None`` is the regression for both findings.
+_SYLVEE_BOILERPLATE = (
+    "Doors at 6:00 pm | Show at 7:30 pm CASHLESS VENUE - The Sylvee services all credit "
+    "and debit payments only. No cash accepted. Bags (max size 12\" x 6\" x 12\") are "
+    "allowed and will be searched upon entry. Exceptions will be made for necessary "
+    "medical equipment and bags for nursing mothers. We encourage you to pack light "
+    "with only the necessities to make the entry process as smooth as possible. All "
+    "General Admission Tickets are good for the standing General Admission Floor and "
+    "GA Balcony areas on a first come first serve basis. Accessible Seating: "
+    "Accessible seating is available online through Ticketmaster by filtering on the "
+    "ADA Icon and selecting the Accessible Seats, or in person at The Sylvee Box "
+    "Office during business hours. For additional information call 608-709-8157."
+)
+_MAJESTIC_BOILERPLATE = (  # literal info field on the Rebirth Brass Band event (#177)
+    "Doors at 7:00 pm | Show at 8:00 pm CASHLESS VENUE - The Majestic Theatre services "
+    "all credit and debit payments only. No cash accepted. Bags (max size 12\" x 6\" x "
+    "12\") are allowed and will be searched upon entry. Exceptions will be made for "
+    "necessary medical equipment and bags for nursing mothers. We encourage you to "
+    "pack light with only the necessities to make the entry process as smooth as "
+    "possible. All tickets are standing and seated General Admission and are available "
+    "on a first come first serve basis. The Opera Boxes are only accessible by stairs. "
+    "Advance tickets can be purchased online or at The Sylvee box office. Once the "
+    "doors have opened, if tickets are still available, they can be purchased at the "
+    "Majestic Theatre."
+)
+# pleaseNote variants — TM ships these in parallel with info, with slightly
+# different wording ("Doors open at 6:00 pm." vs "Doors at 6:00 pm | Show at 7:30 pm",
+# "Once the event has started" vs "Once the doors have opened"). Both must scrub.
+_SYLVEE_PLEASE_NOTE = (
+    "Doors open at 6:00 pm. CASHLESS VENUE - The Sylvee services all credit and debit "
+    "payments only. No cash accepted. Bags (max size 12\" x 6\" x 12\") are allowed and "
+    "will be searched upon entry. Exceptions will be made for necessary medical "
+    "equipment and bags for nursing mothers. We encourage you to pack light with only "
+    "the necessities to make the entry process as smooth as possible. Tickets can be "
+    "purchased online up to the event start time. Once the event has started, if "
+    "tickets are still available, they can be purchased at the Sylvee box office."
+)
+_BARRYMORE_BOILERPLATE = (
+    "Doors at 7:00 pm | Show at 8:00 pm There are no elevators in the theatre. "
+    "Advance tickets can be purchased online or at The Sylvee box office. Once the "
+    "doors have opened, if tickets are still available, they can be purchased at the "
+    "venue."
+)
+_BARRYMORE_LOWERCASE_THEATER = (  # the feed has both "theatre" and "theater" spellings
+    "Doors at 7:00 pm | Show at 8:00 pm There are no elevators in the theater. "
+    "Advance tickets can be purchased online or at The Sylvee box office."
+)
+_RENT_REAL_DESCRIPTION = (
+    "This season, we proudly celebrate the 30th anniversary of RENT, the groundbreaking "
+    "musical that redefined Broadway and continues to inspire audiences worldwide. "
+    "Capital City Theatre is thrilled to present a fresh staging of Jonathan Larson's "
+    "iconic work."
 )
 
 
@@ -35,7 +93,11 @@ def _doc(
     end_time=None,
     status="onsale",
     timezone="America/Chicago",
-    info="Doors at 6:30 pm | Show at 8:00 pm. Cashless venue, bag policy applies.",
+    info=(
+        "Modest Mouse return with their first headline tour in support of the band's "
+        "ninth studio album, joined by a rotating lineup of special guests across the "
+        "summer of 2026."
+    ),
     please_note=None,
     venue=None,
     images=None,
@@ -221,7 +283,8 @@ class TestParseEvent:
         assert ev.all_day is False
         assert ev.venue_name == "The Sylvee"
         assert ev.venue_address == "25 S. Livingston Street, Madison, WI 53703"
-        assert ev.description.startswith("Doors at 6:30 pm")
+        assert ev.description is not None
+        assert ev.description.startswith("Modest Mouse return")
         assert ev.image_url == "https://img/large.jpg"
         assert ev.categories == ["Music"]
         assert ev.source_name == "Ticketmaster"
@@ -293,12 +356,32 @@ class TestParseEvent:
         assert _parse_event(doc) is None
 
     def test_description_falls_back_to_please_note(self):
-        ev = _parse_event(_doc(info=None, please_note="Bag policy in effect."))
+        # info absent → fall back to pleaseNote when it carries real signal.
+        ev = _parse_event(_doc(
+            info=None,
+            please_note=(
+                "Free meet-and-greet with the artist runs in the lobby from 7-7:45pm "
+                "for VIP ticket holders only."
+            ),
+        ))
         assert ev is not None
-        assert ev.description == "Bag policy in effect."
+        assert ev.description is not None
+        assert ev.description.startswith("Free meet-and-greet")
+
+    def test_description_none_when_please_note_is_boilerplate(self):
+        # Both fields populated but pleaseNote is venue boilerplate → no description.
+        ev = _parse_event(_doc(info=None, please_note=_SYLVEE_BOILERPLATE))
+        assert ev is not None
+        assert ev.description is None
 
     def test_description_none_when_both_missing(self):
         ev = _parse_event(_doc(info=None, please_note=None))
+        assert ev is not None
+        assert ev.description is None
+
+    def test_description_none_when_info_is_venue_boilerplate(self):
+        # Regression for #178 (Highly Suspect at The Sylvee).
+        ev = _parse_event(_doc(info=_SYLVEE_BOILERPLATE, please_note=None))
         assert ev is not None
         assert ev.description is None
 
@@ -332,3 +415,93 @@ class TestParseEvent:
         assert ev.end_at is not None
         assert ev.end_at.date().isoformat() == "2026-10-01"
         assert ev.end_at.time() == dtime.max
+
+
+# ---------------------------------------------------------------------------
+# _choose_description
+# ---------------------------------------------------------------------------
+
+class TestChooseDescription:
+    """Gating logic for the description field.
+
+    TM ships per-venue policy boilerplate in info/pleaseNote; the helper
+    must surface real event copy and drop pure boilerplate so audit issues
+    #177 and #178 don't recur.
+    """
+
+    def test_pure_sylvee_boilerplate_returns_none(self):
+        # Regression for #178.
+        assert _choose_description(_SYLVEE_BOILERPLATE, None) is None
+
+    def test_pure_majestic_boilerplate_returns_none(self):
+        # Regression for #177.
+        assert _choose_description(_MAJESTIC_BOILERPLATE, None) is None
+
+    def test_pure_barrymore_boilerplate_returns_none(self):
+        assert _choose_description(_BARRYMORE_BOILERPLATE, None) is None
+
+    def test_barrymore_lowercase_theater_spelling_returns_none(self):
+        # The feed has both "theatre" and "theater" — must scrub both.
+        assert _choose_description(_BARRYMORE_LOWERCASE_THEATER, None) is None
+
+    def test_sylvee_please_note_variant_returns_none(self):
+        # The other observed regression: pleaseNote ships the same boilerplate
+        # with different wording ("Doors open at" / "Once the event has started").
+        assert _choose_description(None, _SYLVEE_PLEASE_NOTE) is None
+
+    def test_orpheum_tiered_ga_boilerplate_returns_none(self):
+        # Observed on Orpheum events that ship the tiered-GA-pricing block.
+        tiered = (
+            "Doors at 7:00 pm | Show at 8:00 pm A tiered system is in place for "
+            "General Admission tickets. This allows us to reward the most loyal fans "
+            "who buy early by giving them access to the lowest priced tickets. Prices "
+            "will increase as each tier sells out. Every General Admission ticket "
+            "(regardless of tier) will have the same access and benefits at the show."
+        )
+        assert _choose_description(tiered, None) is None
+
+    def test_empty_inputs_return_none(self):
+        assert _choose_description(None, None) is None
+        assert _choose_description("", "") is None
+        assert _choose_description("   ", "\n\t") is None
+
+    def test_real_event_description_kept_verbatim(self):
+        assert _choose_description(_RENT_REAL_DESCRIPTION, None) == _RENT_REAL_DESCRIPTION
+
+    def test_cancellation_placeholder_dropped(self):
+        # TM occasionally swaps the info field on cancelled events for this
+        # boilerplate placeholder. Drop it so we don't render it as a description.
+        assert _choose_description(
+            "Unfortunately, the Event Organizer has had to cancel your event.",
+            None,
+        ) is None
+
+    def test_doortime_prefix_with_real_copy_preserved_verbatim(self):
+        # Mixed input — boilerplate prefix + real artist copy. The original
+        # raw string is returned (we only use scrubbing to decide whether to
+        # keep it), so the door times survive too.
+        mixed = (
+            "Doors at 6:00 pm | Show at 7:00 pm Cary Elwes (Westley) is hitting "
+            "the road to share never-before-told stories from the making of The "
+            "Princess Bride, followed by a screening and live Q&A."
+        )
+        assert _choose_description(mixed, None) == mixed
+
+    def test_info_empty_falls_back_to_please_note(self):
+        assert _choose_description(None, _RENT_REAL_DESCRIPTION) == _RENT_REAL_DESCRIPTION
+        assert _choose_description("", _RENT_REAL_DESCRIPTION) == _RENT_REAL_DESCRIPTION
+
+    def test_info_preferred_over_please_note(self):
+        # Both populated and both have signal → info wins, mirroring the
+        # original `info or pleaseNote` precedence.
+        assert (
+            _choose_description(_RENT_REAL_DESCRIPTION, "different note")
+            == _RENT_REAL_DESCRIPTION
+        )
+
+    def test_info_boilerplate_falls_through_to_please_note(self):
+        # info is boilerplate but pleaseNote carries real signal — pick pleaseNote.
+        assert (
+            _choose_description(_SYLVEE_BOILERPLATE, _RENT_REAL_DESCRIPTION)
+            == _RENT_REAL_DESCRIPTION
+        )
