@@ -1,3 +1,4 @@
+import html
 import logging
 import re
 import time
@@ -169,7 +170,12 @@ def _parse_event(doc: dict) -> RawEvent | None:
     if not _in_madison_metro(venue):
         return None
 
-    title = (doc.get("title") or "").strip()
+    # The Our Lives Tribe Events REST API ships HTML entities raw in titles
+    # (e.g. `Dayshift &#8211; The 30+ Daytime Party`). Decode them so the
+    # canonical_hash, fuzzy-dedup title similarity, and rendered card text all
+    # see the human-readable form. Without this, the same event scraped via
+    # another source (Atwood Music Hall) doesn't dedup against ours (#192).
+    title = html.unescape((doc.get("title") or "").strip())
     source_url = (doc.get("url") or "").strip()
     if not title or not source_url:
         return None
@@ -197,7 +203,9 @@ def _parse_event(doc: dict) -> RawEvent | None:
 
     description = clean_html_text(doc.get("description") or "") or None
 
-    venue_name = (venue.get("venue") or "").strip() or None
+    # Same entity-decoding as the title — venue_name participates in the
+    # canonical_hash and is rendered on the card.
+    venue_name = html.unescape((venue.get("venue") or "").strip()) or None
     venue_address = _build_address(venue)
 
     return RawEvent(

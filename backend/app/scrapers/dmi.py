@@ -134,9 +134,10 @@ def _parse_event(doc: dict) -> RawEvent | None:
     if not _in_madison_metro(venue):
         return None
 
-    # The DMI API ships HTML entities raw in titles (e.g. `What&#8217;s Up
-    # Downtown`), unlike Our Lives' API which decodes them server-side. Unescape
-    # here so the canonical_hash and rendered card text are both clean.
+    # The DMI Tribe Events API ships HTML entities raw in titles (e.g.
+    # `What&#8217;s Up Downtown`). Unescape here so the canonical_hash and
+    # rendered card text are both clean. (Our Lives' Tribe API has the same
+    # behavior — see its scraper.)
     title = html.unescape((doc.get("title") or "").strip())
     source_url = (doc.get("url") or "").strip()
     if not title or not source_url:

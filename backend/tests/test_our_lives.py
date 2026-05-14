@@ -272,12 +272,27 @@ class TestParseEvent:
     def test_invalid_start_date_returns_none(self):
         assert _parse_event(_base_doc(start_date="not a date")) is None
 
-    def test_html_entities_in_title_preserved(self):
-        # Title arrives as the API-decoded value; we don't double-decode.
-        # Description is the only HTML we clean.
-        ev = _parse_event(_base_doc(title="National Women's Music Festival"))
+    def test_html_entity_title_decoded(self):
+        # Real-world: the live Tribe API ships en-dashes as `&#8211;` in titles
+        # (e.g. "Dayshift &#8211; The 30+ Daytime Party"). The undecoded form
+        # broke canonical_hash dedup against Atwood's plain-hyphen variant of
+        # the same event (#192).
+        ev = _parse_event(_base_doc(title="Dayshift &#8211; The 30+ Daytime Party"))
         assert ev is not None
-        assert ev.title == "National Women's Music Festival"
+        assert ev.title == "Dayshift – The 30+ Daytime Party"
+
+    def test_html_entity_venue_name_decoded(self):
+        # venue_name participates in the canonical_hash too, so the same
+        # decoding must happen there.
+        ev = _parse_event(_base_doc(venue={
+            "venue": "Smith &amp; Sons",
+            "address": "1 Main St",
+            "city": "Madison",
+            "state": "WI",
+            "zip": "53703",
+        }))
+        assert ev is not None
+        assert ev.venue_name == "Smith & Sons"
 
     def test_unusual_timezone_falls_back_to_central(self):
         ev = _parse_event(_base_doc(timezone="Not/A_Zone"))
