@@ -200,8 +200,22 @@ def _normalize_title_for_match(title: str) -> str:
     two listings for the same Karben4 trivia night as "Brews & Q's Taproom
     Trivia at Karben4" and "Brews and Q's" — the shorter title is only a
     substring of the longer after this normalization.
+
+    Also strips a trailing city suffix (" - madison", " - madison, wi") that
+    Visit Madison appends to disambiguate touring acts (#187: their listing
+    titled the show "Anberlin - Madison" while Atwood listed it as "Anberlin
+    with Emery, Watashi Wa & Motion Light" — without this strip, neither
+    title is a substring of the other and the SequenceMatcher ratio falls
+    below the fuzzy threshold). Anchored to the end so titles that mention
+    Madison mid-string (e.g. "Concert - Madison Symphony") are untouched.
+    Applied only to the matching key — stored titles are unchanged.
     """
-    return title.lower().strip().replace(" & ", " and ")
+    s = title.lower().strip().replace(" & ", " and ")
+    for suffix in (" - madison, wi", " - madison"):
+        if s.endswith(suffix):
+            s = s[: -len(suffix)].rstrip()
+            break
+    return s
 
 
 def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
