@@ -49,7 +49,7 @@ _VM_CATEGORY_MAP: dict[str, str] = {
     "Kids & Families":                "Family & Kids",
     "Music & Concerts":               "Music",
     "Nature & Outdoors":              "Outdoors & Nature",
-    "Tours & Walks":                  "Outdoors & Nature",
+    "Tours & Walks":                  "Tours & Sightseeing",
     "Theater & Performing Arts":      "Theater & Stage",
     "Trivia":                         "Trivia & Games",
     "Volunteer":                      "Volunteer & Causes",

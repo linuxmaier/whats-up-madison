@@ -11,6 +11,7 @@ export const CATEGORIES = [
   'Food & Drink',
   'Health & Wellness',
   'Outdoors & Nature',
+  'Tours & Sightseeing',
   'Sports & Recreation',
   'Talks & Learning',
   'Civic & Politics',
