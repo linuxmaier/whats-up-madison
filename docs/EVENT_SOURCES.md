@@ -63,11 +63,12 @@ These cover many venues and event types from a single source. Highest leverage i
 - Status: **investigating**
 - Notes: Official municipal events. Likely lower volume but high signal for civic/public events.
 
-### Downtown Madison Inc.
-- URL: https://visitdowntownmadison.com/events
-- Scraper type prospect: html
-- Status: **investigating**
-- Notes: Downtown-specific aggregator.
+### Downtown Madison Inc. (DMI)
+- URL: https://downtownmadison.org/wp-json/tribe/events/v1/events/?categories=dmi-events
+- Public-facing calendar page: https://downtownmadison.org/calendar/category/dmi-events/
+- Scraper type: api
+- Status: **integrated**
+- Notes: Investigated for #72 in May 2026. The URL named in the issue (`visitdowntownmadison.com/events`) is a hand-curated annual highlights list — a static page that DMI staff edit once per year with `<month>: <day> <link>` rows pointing mostly to partner sites. No event timestamps, descriptions, or venues, so not a viable structured source. The actual DMI calendar lives on the sister site `downtownmadison.org`, which runs The Events Calendar (Tribe) plugin and exposes the same JSON REST API shape used by the Our Lives scraper. The unfiltered feed includes ~20 internal DMI committee meetings (Board of Directors, Executive Committee, Transportation, Government Relations, Economic Development, Quality of Life, Beyond Compliance) that aren't public events — we filter to `?categories=dmi-events` to surface only the public-facing slate: What's Up Downtown breakfasts at The Edgewater, New Faces New Places networking, Behind The Scenes tours, the IDA Place Matters conference, the I.D.E.A. Series at Overture Center, the DMI Annual Celebration. Volume is low (~12 upcoming events) but signal is high and there's zero overlap with Isthmus / Visit Madison. 30-day forward window, paginated `per_page=50` (one page in practice), `?categories=dmi-events` filter. No source-category mapping: DMI's tags are program-specific (`whats-up-downtown`, `new-faces-new-places`, `the-i-d-e-a-series`) and don't map cleanly to our closed taxonomy — descriptions are rich multi-paragraph HTML, so the LLM tagger handles category assignment. Titles ship HTML entities raw (`What&#8217;s Up Downtown`), so the parser unescapes before constructing the canonical hash; descriptions flow through `clean_html_text()` which already handles entities. Polite 1s delay between pages.
 
 ### 608today (6AM City)
 - URL: https://608today.6amcity.com/events

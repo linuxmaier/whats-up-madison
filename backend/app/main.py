@@ -17,6 +17,7 @@ from app.routers import events
 from app.schemas import FeedbackRequest
 from app.scrapers.atwood import AtwoodMusicHallSource
 from app.scrapers.base import BaseSource
+from app.scrapers.dmi import DMISource
 from app.scrapers.high_noon import HighNoonSource
 from app.scrapers.isthmus import IsthmusSource
 from app.scrapers.our_lives import OurLivesSource
@@ -80,6 +81,7 @@ SCRAPERS = [
     OurLivesSource(),
     TicketmasterSource(),
     AtwoodMusicHallSource(),
+    DMISource(),
 ]
 
 
