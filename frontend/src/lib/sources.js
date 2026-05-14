@@ -1,4 +1,4 @@
-const SOURCE_PRIORITY = ['High Noon Saloon', 'Atwood Music Hall', 'Ticketmaster', 'Our Lives', 'DMI', 'Isthmus', 'Visit Madison']
+const SOURCE_PRIORITY = ['High Noon Saloon', 'Atwood Music Hall', 'Majestic Theatre', 'Ticketmaster', 'Our Lives', 'DMI', 'Isthmus', 'Visit Madison']
 
 export function sortedSources(sources) {
   if (!sources) return []

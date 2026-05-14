@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Trust ranking for event sources — lower index = higher trust.
 # Mirrors SOURCE_PRIORITY in frontend/src/lib/sources.js; keep in sync when adding scrapers.
-SOURCE_PRIORITY = ["High Noon Saloon", "Atwood Music Hall", "Ticketmaster", "Our Lives", "DMI", "Isthmus", "Visit Madison"]
+SOURCE_PRIORITY = ["High Noon Saloon", "Atwood Music Hall", "Majestic Theatre", "Ticketmaster", "Our Lives", "DMI", "Isthmus", "Visit Madison"]
 
 # Fields that higher-priority sources may overwrite, not just fill when null.
 # title is included because a trusted venue source often has the canonical event name.
