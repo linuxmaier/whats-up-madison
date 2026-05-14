@@ -17,6 +17,110 @@ _PAGE_SIZE = 200  # Discovery API max
 _PAGE_SLEEP_SECONDS = 0.25  # well under the 5 req/s rate limit
 _DROP_STATUSES: frozenset[str] = frozenset({"cancelled", "postponed"})
 
+# Minimum residual length after stripping venue boilerplate to treat the field
+# as carrying event-specific signal. TM populates info/pleaseNote with templated
+# venue-policy copy (cashless, bag policy, ADA seating contact, door times) that
+# repeats across every show at a venue; below this threshold the residue is
+# noise (e.g. just punctuation or fragments), so we surface no description and
+# let downstream higher-priority sources fill it via the ingest merge.
+_DESCRIPTION_MIN_SIGNAL_LENGTH = 40
+
+# Patterns covering the templated venue-policy phrases that TM ships in
+# info/pleaseNote. Each matches a single sentence/clause so the residue test
+# is "how much *non-boilerplate* text remains" rather than "is the whole
+# field one of N known strings". The set was derived from a survey of every
+# unique sentence across info+pleaseNote on the live Madison TM feed; new
+# variants should be added here as they show up in the audit.
+_BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        # Door / show times prefix — variants seen: "Doors at 7:00 pm",
+        # "Doors at 7:00 pm | Show at 8:00 pm", "Doors open at 6:00 pm",
+        # "Doors at 8: 00 pm | Show at 9:00 pm" (TM occasionally injects spaces).
+        r"Doors?\s+(?:open(?:s|ed)?\s+)?at\s+\d{1,2}\s*:?\s*\d{2}\s?[ap]m\s*"
+        r"(?:\|\s*Shows?\s+at\s+\d{1,2}\s*:?\s*\d{2}\s?[ap]m\s*)?",
+        # Cashless venue policy
+        r"CASHLESS\s+VENUE[^.]*(?:\.|$)",
+        r"No\s+cash\s+accepted\.",
+        # Bag policy
+        r"Bags?\s*\(max\s+size[^)]+\)[^.]*(?:\.|$)",
+        r"Exceptions\s+will\s+be\s+made\s+for\s+necessary\s+medical[^.]*(?:\.|$)",
+        r"We\s+encourage\s+you\s+to\s+pack\s+light[^.]*(?:\.|$)",
+        # General-admission seating — Sylvee/Majestic/Orpheum variants:
+        #  - "All General Admission Tickets are good for the standing GA Floor..."
+        #  - "All General Admission tickets are seated."
+        #  - "All tickets are standing and seated General Admission and are
+        #    available on a first come first serve basis."
+        r"All\s+General\s+Admission\s+[Tt]ickets?\s+are\s+(?:good\s+for|seated)[^.]*(?:\.|$)",
+        r"All\s+tickets\s+are\s+(?:standing|seated)[^.]*"
+        r"(?:General\s+Admission|first\s+come\s+first\s+serve)[^.]*(?:\.|$)",
+        r"They\s+are\s+available\s+on\s+a\s+first\s+come\s+first\s+serve\s+basis\.",
+        # Orpheum tiered-GA-pricing boilerplate
+        r"A\s+tiered\s+system\s+is\s+in\s+place\s+for\s+General\s+Admission[^.]*(?:\.|$)",
+        r"This\s+allows\s+us\s+to\s+reward\s+the\s+most\s+loyal\s+fans[^.]*(?:\.|$)",
+        r"Prices\s+will\s+increase\s+as\s+each\s+tier\s+sells\s+out\.",
+        r"Every\s+General\s+Admission\s+ticket[^.]*(?:\.|$)",
+        # Majestic Opera Boxes accessibility note
+        r"The\s+Opera\s+Boxes\s+are\s+only\s+accessible\s+by\s+stairs\.",
+        # ADA / accessible seating — "Accessible Seating: Accessible seating
+        # is available..." and the shorter "Accessible Seating: Available..."
+        r"Accessible\s+Seating:\s*(?:Accessible\s+seating\s+is\s+available|Available)[^.]*(?:\.|$)",
+        r"For\s+additional\s+information\s+call\s+[\d\s\-]+\.",
+        # Theatre/Theater accessibility note (both spellings appear in the feed).
+        r"There\s+are\s+no\s+elevators\s+in\s+the\s+[Tt]heat(?:re|er)\.",
+        # Box-office / re-purchase variants — covers "Advance tickets can be
+        # purchased online or at The Sylvee box office.", "Tickets can be
+        # purchased online up to the event start time.", and "Once the doors
+        # have opened, if tickets are still available, they can be purchased
+        # at the <venue>." / "Once the event has started, if tickets are still
+        # available, they can be purchased at the Sylvee box office."
+        r"(?:Advance\s+)?Tickets\s+can\s+be\s+purchased[^.]*(?:\.|$)",
+        r"Once\s+the\s+(?:doors?\s+(?:have\s+)?opened|event\s+has\s+started)[^.]*(?:\.|$)",
+        # Age restriction noise (also appears mid-sentence)
+        r"Ages?\s+\d+\+",
+        # Cancellation placeholder TM sometimes leaves on cancelled events
+        r"Unfortunately,\s+the\s+Event\s+Organizer\s+has\s+had\s+to\s+cancel\s+your\s+event\.",
+    )
+)
+
+
+def _scrub_boilerplate(text: str) -> str:
+    """Strip well-known TM/venue boilerplate phrases and return the residue.
+
+    Only the gating decision in :func:`_choose_description` consults the
+    residue; the value stored on ``RawEvent.description`` is the *original*
+    raw text, so mixed descriptions (door-times prefix + real event copy)
+    survive verbatim. Whitespace and stray punctuation left behind after a
+    strip are normalised so a residue of ", . :" doesn't beat the threshold.
+    """
+    for pat in _BOILERPLATE_PATTERNS:
+        text = pat.sub(" ", text)
+    # Collapse runs of orphan punctuation that strips leave behind (e.g.
+    # ". . . ." between consecutive scrubbed sentences) so they don't inflate
+    # the residue length above the signal threshold.
+    text = re.sub(r"(?:\s*[.,;:|\-]+\s*){2,}", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^[\s\.,:;|\-]+|[\s\.,:;|\-]+$", "", text)
+    return text
+
+
+def _choose_description(info: str | None, please_note: str | None) -> str | None:
+    """Pick the best event description from TM ``info``/``pleaseNote``.
+
+    Returns the raw ``info`` (or ``pleaseNote`` fallback) when it carries
+    enough event-specific signal after boilerplate is conceptually removed;
+    otherwise returns ``None`` so a higher-priority source (Isthmus, Visit
+    Madison) can fill the field via ingest's source-priority merge, or so
+    the frontend simply renders no description.
+    """
+    for candidate in (info, please_note):
+        raw = (candidate or "").strip()
+        if not raw:
+            continue
+        if len(_scrub_boilerplate(raw)) >= _DESCRIPTION_MIN_SIGNAL_LENGTH:
+            return raw
+    return None
+
 # US state code → full lowercase name for canonical URL slug construction.
 _STATE_NAMES: dict[str, str] = {
     "AL": "alabama", "AK": "alaska", "AZ": "arizona", "AR": "arkansas",
@@ -239,7 +343,7 @@ def _parse_event(doc: dict) -> RawEvent | None:
         end_time = _parse_local_time(end_block.get("localTime")) or dtime.max
         end_at = datetime.combine(end_date, end_time, tzinfo=tz)
 
-    description = (doc.get("info") or doc.get("pleaseNote") or "").strip() or None
+    description = _choose_description(doc.get("info"), doc.get("pleaseNote"))
 
     venue_name = (venue.get("name") or "").strip() or None
     venue_address = _build_address(venue)
