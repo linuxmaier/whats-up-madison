@@ -20,6 +20,7 @@ from app.scrapers.base import BaseSource
 from app.scrapers.dmi import DMISource
 from app.scrapers.high_noon import HighNoonSource
 from app.scrapers.isthmus import IsthmusSource
+from app.scrapers.majestic import MajesticTheatreSource
 from app.scrapers.our_lives import OurLivesSource
 from app.scrapers.ticketmaster import TicketmasterSource
 from app.scrapers.visit_madison import VisitMadisonSource
@@ -81,6 +82,7 @@ SCRAPERS = [
     OurLivesSource(),
     TicketmasterSource(),
     AtwoodMusicHallSource(),
+    MajesticTheatreSource(),
     DMISource(),
 ]
 
