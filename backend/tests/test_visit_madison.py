@@ -6,6 +6,7 @@ from app.scrapers.visit_madison import (
     _CENTRAL,
     _day_of_week_events,
     _fallback_all_day_desc,
+    _map_categories,
     _parse_from_to_times,
     _top_level_times,
 )
@@ -163,3 +164,33 @@ class TestFallbackAllDayDesc:
 
     def test_empty_times_with_none_description(self):
         assert _fallback_all_day_desc("", None) is None
+
+
+# ---------------------------------------------------------------------------
+# _map_categories
+# ---------------------------------------------------------------------------
+
+class TestMapCategories:
+    @staticmethod
+    def _doc(*cat_names):
+        return {"categories": [{"catName": c} for c in cat_names]}
+
+    def test_tours_and_walks_maps_to_tours_and_sightseeing(self):
+        # Regression test for #179: indoor architectural tours (e.g. Frank
+        # Lloyd Wright's Unitarian Meeting House) come from Visit Madison
+        # tagged only "Tours & Walks". Previously this mapped to
+        # "Outdoors & Nature", which doesn't fit indoor tours.
+        assert _map_categories(self._doc("Tours & Walks")) == ["Tours & Sightseeing"]
+
+    def test_nature_and_outdoors_still_maps(self):
+        assert _map_categories(self._doc("Nature & Outdoors")) == ["Outdoors & Nature"]
+
+    def test_unknown_category_dropped(self):
+        assert _map_categories(self._doc("Some Unmapped Category")) == []
+
+    def test_empty_doc_returns_empty(self):
+        assert _map_categories({}) == []
+
+    def test_dedupes_when_two_source_categories_map_to_same_ours(self):
+        # "Food & Drink" and "Local Libations" both map to "Food & Drink".
+        assert _map_categories(self._doc("Food & Drink", "Local Libations")) == ["Food & Drink"]

@@ -232,6 +232,7 @@ Multi-tagging is allowed (e.g. a UW author event may be both **Visual Art** and 
 - **Food & Drink** — farmers' markets, food festivals, tastings, brewery/restaurant events
 - **Health & Wellness** — yoga, meditation, group fitness, group walks
 - **Outdoors & Nature** — birding, hikes, conservation work, park events, gardening
+- **Tours & Sightseeing** — guided tours and sightseeing: architectural and historic-site tours, museum and gallery tours, brewery and food tours, ghost/history walks, trolley/bus tours (excludes hikes and exercise walks)
 - **Sports & Recreation** — pickup games, recreational leagues, races, fitness meetups, sports-watch parties, organized athletic events
 - **Talks & Learning** — lectures, panels, classes, workshops, book clubs, author readings
 - **Civic & Politics** — government meetings, town halls, candidate forums, advocacy
