@@ -190,9 +190,11 @@ export default function App() {
   // sub-pixel mismatch between the measured height and the actually-rendered
   // bottom edge of the element above is hidden by the higher-z element. The
   // header's z-30 covers the rail's z-20; the rail's gradient covers the
-  // bucket headers' z-10.
+  // bucket headers' z-10. Each step subtracts one more pixel than the last so
+  // the overlap compounds — rail starts at (headerH − 1), bucket starts at
+  // (rail's bottom − 1) = (headerH − 1 + railH) − 1 = headerH + railH − 2.
   const railTop = Math.max(0, headerH - 1)
-  const bucketTop = Math.max(0, headerH + railH - 1)
+  const bucketTop = Math.max(0, headerH + railH - 2)
 
   return (
     <div
