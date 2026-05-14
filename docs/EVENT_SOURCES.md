@@ -47,9 +47,9 @@ These cover many venues and event types from a single source. Highest leverage i
 
 ### Eventbrite
 - URL: https://www.eventbrite.com/d/wi--madison/events/
-- Scraper type prospect: api
-- Status: **investigating**
-- Notes: Has a public API (token required). Strong long-tail coverage of meetups, classes, nightlife, food. Verify current API access tier and rate limits.
+- Scraper type: api → none
+- Status: **rejected**
+- Reason: Eventbrite's public Event Search API (`GET /v3/events/search/`) was deprecated Dec 2019 and turned off Feb 20 2020. The remaining public endpoints require a known event/venue/organization ID; there is no supported "events in a city" query. HTML scraping of `/d/wi--madison/events/` is technically feasible (the listing page exposes ~112 JSON-LD `Event` entries on the first response) but is ToS-questionable and likely IP-fragile from Fly.io's range — same failure pattern that retired the Overture scraper (#162). Revisit only if either (a) Eventbrite reopens a public discovery API or (b) we gain a non-datacenter egress path (residential proxy, Cloudflare Worker fetch, etc.).
 
 ### Meetup
 - URL: https://www.meetup.com/find/us--wi--madison/

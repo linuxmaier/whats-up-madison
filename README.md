@@ -135,7 +135,7 @@ whats-up-madison/
 
 - **Step 1 — Skeleton** ✅ Repo structure, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class
 - **Step 2 — First scraper + frontend** ✅ Multi-source data model (`Event`/`EventSource`), ingestion utility, React/Vite/Tailwind frontend with date picker and event cards
-- **Step 3 — More scrapers** 🔄 Isthmus integrated (iCal + RSS, 30-day window) and Visit Madison integrated (Simpleview JSON API, 30-day window, with category pre-tagging from the source's own taxonomy); Eventbrite API, City of Madison, and individual venue HTML scrapers still planned. Daily automation runs out-of-process for now (cron / systemd timer hitting `/admin/scrape`); no in-process scheduler.
+- **Step 3 — More scrapers** 🔄 Isthmus integrated (iCal + RSS, 30-day window) and Visit Madison integrated (Simpleview JSON API, 30-day window, with category pre-tagging from the source's own taxonomy); City of Madison and individual venue HTML scrapers still planned. Daily automation runs out-of-process for now (cron / systemd timer hitting `/admin/scrape`); no in-process scheduler.
 - **Step 4 — Categories** ✅ Closed taxonomy in `backend/app/categories.py` (15 tags); Visit Madison events pre-tagged from the source taxonomy; LLM-assisted tagging pass shipped in `backend/app/tagger.py` (runs at the end of `/admin/scrape` and via the standalone `/admin/tag` endpoint, with the system prompt cached); frontend filter UI shipped (multi-select tag cloud, sensible defaults, localStorage)
 - **Step 5 — Map view** ✅ Geocoding pipeline (Nominatim, cached per venue in `venue_geocodes` so re-scrapes are free) runs after each scraper; `latitude`/`longitude` exposed on the API; List/Map segmented toggle in the header renders a Leaflet map of Madison with clustered pins, multi-event popups, and a panel for events whose venues didn't resolve
 - **Recent polish** ✅ Fuzzy cross-source dedup in ingest (title similarity ≥ 0.65 anchored by time + venue); explicit source priority ranking; Isthmus description enrichment from event detail pages; Previous/Next nav buttons; sticky-header layout fixes
@@ -177,7 +177,7 @@ Returns active events for a given date. Long-running events appear on every date
     "status": "active",
     "sources": [
       {"source_name": "Isthmus", "source_url": "https://isthmus.com/events/..."},
-      {"source_name": "Eventbrite", "source_url": "https://..."}
+      {"source_name": "Ticketmaster", "source_url": "https://..."}
     ]
   }
 ]
