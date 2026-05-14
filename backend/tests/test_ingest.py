@@ -171,6 +171,51 @@ def test_unrelated_titles_do_not_merge_via_substring(db):
     assert db.query(Event).count() == 2
 
 
+def test_ampersand_and_normalize_merges_substring(db):
+    # Issue #191: Visit Madison shipped two listings for the same Karben4 trivia
+    # night, "Brews & Q's Taproom Trivia at Karben4" and "Brews and Q's". The
+    # fuzzy substring branch missed because the shorter title isn't literally
+    # contained in the longer until " & " is normalized to " and ".
+    long_title = "Brews & Q's Taproom Trivia at Karben4"
+    short_title = "Brews and Q's"
+
+    ingest_events(
+        "Source A",
+        [_raw(title=long_title, venue_name="Karben4 Brewing")],
+        db,
+    )
+    ingest_events(
+        "Source A",
+        [_raw(
+            title=short_title,
+            venue_name="Karben4 Brewing",
+            source_url="https://a.example/2",
+        )],
+        db,
+    )
+
+    assert db.query(Event).count() == 1
+    # Reverse direction: short first, long second — also merges.
+    db.query(EventSource).delete()
+    db.query(Event).delete()
+    db.commit()
+    ingest_events(
+        "Source A",
+        [_raw(title=short_title, venue_name="Karben4 Brewing")],
+        db,
+    )
+    ingest_events(
+        "Source A",
+        [_raw(
+            title=long_title,
+            venue_name="Karben4 Brewing",
+            source_url="https://a.example/3",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 1
+
+
 # ---------------------------------------------------------------------------
 # 5. Staleness: event removed from a run → EventSource inactive, Event removed
 # ---------------------------------------------------------------------------
