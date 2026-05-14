@@ -53,9 +53,9 @@ These cover many venues and event types from a single source. Highest leverage i
 
 ### Meetup
 - URL: https://www.meetup.com/find/us--wi--madison/
-- Scraper type prospect: api (uncertain)
-- Status: **investigating**
-- Notes: Best source for recurring social/professional/hobby groups. Public API access has been restricted in recent years; confirm whether GraphQL API is usable for our case.
+- Scraper type: api → none
+- Status: **rejected**
+- Reason: Investigated for #70 in May 2026 and ruled out on machine-policy grounds. (1) Meetup's `robots.txt` explicitly disallows the GraphQL API at `https://www.meetup.com/gql*` for all user-agents — that's the only programmatic event surface, and the issue body's "GraphQL API" path is named directly in the disallow list. The legacy gateway at `api.meetup.com/gql` returns HTTP 404 (decommissioned). (2) `robots.txt` also disallows every URL parameter we'd need to filter events from the HTML surface: `?location=*`, `?categoryId=*`, `?dateRange=*`, `?eventType=*`, `?distance=*`, `?radius=*`, `?keywords=*`, plus `/n/*`, `/mu_api/`, and `/api/?`. `GPTBot` is fully disallowed in a separate stanza — broader stance against automated crawling. (3) The unparameterized city find page `/find/us--wi--madison/` itself is robots-allowed and returns 45 JSON-LD `Event` blocks with name/startDate/endDate/location.address/url, but is too thin to be useful as a scraper: no pagination (no `rel="next"`, no `?page=` anchors), no date or category control (those params are all disallowed), `description` is empty in JSON-LD so we'd need a second per-event fetch on a host that doesn't want bots. A sample run covered 2026-05-14 → 2026-06-06 — the "soonest 45" default sort with no way to widen the window. (4) Meetup's GraphQL docs (`meetup.com/api` → `/graphql/`) frame the API around "Business Solutions" for Meetup Pro customers, indicating it's gated behind the paid org subscription, not a per-app free developer key. Coverage gap is acceptable: **Isthmus** already surfaces many of Madison's recurring community/hobby events (Toastmasters, civic meetings, hobby clubs, social gatherings), and the LLM tagger handles `Community & Clubs` / `Health & Wellness` / `Talks & Learning` tagging for events from other sources. Revisit only if (a) Meetup reopens an unauthenticated city-search API, or (b) `robots.txt` relaxes `/gql*` and the event-filter params, or (c) we acquire a Meetup Pro / Partner credential whose ToS permits aggregation.
 
 ### City of Madison
 - URL: https://www.cityofmadison.com/events
