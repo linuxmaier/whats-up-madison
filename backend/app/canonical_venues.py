@@ -52,6 +52,13 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "barrymore theatre": CanonicalVenue(
         43.0930640, -89.3522665, "2090 Atwood Ave, Madison, WI 53704"
     ),
+    # Concerts on the Square outdoor stage on the Wisconsin State Capitol
+    # lawn. The venue has no street address — coords resolve to the Capitol
+    # building itself (verified via Nominatim search "Wisconsin State
+    # Capitol"), which is the audience's gathering ground.
+    "king street corner of the capitol square": CanonicalVenue(
+        43.0746917, -89.3841658, "Capitol Square, Madison, WI 53703"
+    ),
     # Overture Center building names — the canonical display name is
     # "Overture Center for the Arts"; all sub-room and alias entries
     # below carry canonical_name so ingest normalizes them before hashing.

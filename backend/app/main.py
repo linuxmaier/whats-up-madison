@@ -24,6 +24,7 @@ from app.scrapers.majestic import MajesticTheatreSource
 from app.scrapers.our_lives import OurLivesSource
 from app.scrapers.ticketmaster import TicketmasterSource
 from app.scrapers.visit_madison import VisitMadisonSource
+from app.scrapers.wco import WisconsinChamberOrchestraSource
 from app.tagger import tag_untagged_events
 
 logging.config.dictConfig({
@@ -84,6 +85,7 @@ SCRAPERS = [
     AtwoodMusicHallSource(),
     MajesticTheatreSource(),
     DMISource(),
+    WisconsinChamberOrchestraSource(),
 ]
 
 
