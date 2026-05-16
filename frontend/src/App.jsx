@@ -208,7 +208,7 @@ export default function App() {
     >
       <div
         ref={headerRef}
-        className="sticky top-0 z-30 border-b"
+        className="sticky top-0 z-[1000] border-b"
         style={{ background: 'var(--c-brand)', borderColor: 'rgba(0,0,0,0.15)' }}
       >
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col items-center gap-y-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -378,13 +378,12 @@ export default function App() {
         onClose={() => setHelpOpen(false)}
         onStartTour={() => {
           setHelpOpen(false)
-          // Tour anchors live in the list-view header controls; swap out of map
-          // mode so the filter / date-picker callouts land on visible elements.
-          if (viewMode !== 'list') setViewMode('list')
           setTourRunning(true)
         }}
       />
-      {tourRunning && <Tour run onClose={() => setTourRunning(false)} />}
+      {tourRunning && (
+        <Tour run mode={viewMode} onClose={() => setTourRunning(false)} />
+      )}
     </div>
   )
 }

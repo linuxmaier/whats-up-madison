@@ -1,41 +1,83 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, Calendar, Tag, Building2, LayoutList, MapPin, Activity, X } from 'lucide-react'
+import { Search, Calendar, Building2, MapPin, BarChart3, X } from 'lucide-react'
+
+function IconCircle({ children }) {
+  return (
+    <span
+      className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white"
+      style={{ background: 'var(--c-brand)' }}
+    >
+      {children}
+    </span>
+  )
+}
+
+// Same path used by CategoryFilter.jsx so the modal entry visually matches
+// the actual control in the header.
+function CategoryGlyph() {
+  return (
+    <svg
+      className="w-4 h-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 8h10M11 12h2M11 16h2" />
+    </svg>
+  )
+}
+
+// Tiny mock of the List|Map segmented control so the entry is recognizable.
+function ListMapVisual() {
+  return (
+    <span
+      className="flex-shrink-0 inline-flex border rounded overflow-hidden text-[10px] leading-none"
+      style={{ borderColor: 'var(--c-brand)' }}
+      aria-hidden="true"
+    >
+      <span className="px-1.5 py-1 bg-white" style={{ color: 'var(--c-brand)' }}>List</span>
+      <span className="px-1.5 py-1 text-white" style={{ background: 'var(--c-brand)' }}>Map</span>
+    </span>
+  )
+}
 
 const FEATURES = [
   {
-    icon: Search,
+    visual: <IconCircle><Search size={16} aria-hidden="true" /></IconCircle>,
     title: 'Search',
     body: 'Type in the search bar to find events by title, description, or venue across all upcoming dates.',
   },
   {
-    icon: Calendar,
+    visual: <IconCircle><Calendar size={16} aria-hidden="true" /></IconCircle>,
     title: 'Date picker',
-    body: "Pick any date to see what's happening that day. Click the brand logo to jump back to today.",
+    body: "Pick any date to see what's happening that day. Click What's Up Madison to jump back to today.",
   },
   {
-    icon: Tag,
+    visual: <IconCircle><CategoryGlyph /></IconCircle>,
     title: 'Category filter',
     body: 'Narrow events by type — music, food, family, etc. Your selection is remembered between visits.',
   },
   {
-    icon: Building2,
+    visual: <IconCircle><Building2 size={16} aria-hidden="true" /></IconCircle>,
     title: 'Venue filter',
-    body: "Hide venues you're not interested in so they stop appearing in your results.",
+    body: 'Open this to look up a specific venue, or hide venues you’re not interested in.',
   },
   {
-    icon: LayoutList,
+    visual: <ListMapVisual />,
     title: 'List / Map toggle',
     body: 'Browse the day as a time-grouped list or as a map of Madison with clustered pins.',
   },
   {
-    icon: MapPin,
+    visual: <IconCircle><MapPin size={16} aria-hidden="true" /></IconCircle>,
     title: 'Map view',
     body: 'Tap a pin to see what events are happening there; events without a location appear below the map.',
   },
   {
-    icon: Activity,
-    title: 'Density rail',
+    visual: <IconCircle><BarChart3 size={16} aria-hidden="true" /></IconCircle>,
+    title: 'Hour chart',
     body: 'The bar under the header shows event counts by hour — click any segment to jump to that time of day.',
   },
 ]
@@ -97,14 +139,9 @@ export default function HelpModal({ open, onClose, onStartTour }) {
             What&apos;s Up Madison aggregates events from across the city — here&apos;s a quick rundown of the controls.
           </p>
           <ul className="flex flex-col gap-3">
-            {FEATURES.map(({ icon: Icon, title, body }) => (
+            {FEATURES.map(({ visual, title, body }) => (
               <li key={title} className="flex items-start gap-3">
-                <span
-                  className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white"
-                  style={{ background: 'var(--c-brand)' }}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                </span>
+                <div className="w-14 flex-shrink-0 flex justify-center">{visual}</div>
                 <div className="flex flex-col">
                   <span className="text-sm font-medium text-gray-900">{title}</span>
                   <span className="text-sm text-gray-600">{body}</span>
