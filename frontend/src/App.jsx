@@ -7,8 +7,11 @@ import CategoryFilter from './components/CategoryFilter'
 import VenueFilter from './components/VenueFilter'
 import MapView from './components/MapView'
 import FeedbackModal from './components/FeedbackModal'
+import HelpButton from './components/HelpButton'
+import HelpModal from './components/HelpModal'
 import SearchBar from './components/SearchBar'
 import SearchResults from './components/SearchResults'
+import Tour from './components/Tour'
 import { partitionEvents } from './lib/eventTime'
 import {
   filterEvents,
@@ -68,6 +71,8 @@ export default function App() {
   const [hiddenVenues, setHiddenVenues] = useState(loadHiddenVenues)
   const [viewMode, setViewMode] = useState(loadViewMode)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [tourRunning, setTourRunning] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [searchLoading, setSearchLoading] = useState(false)
@@ -203,7 +208,7 @@ export default function App() {
     >
       <div
         ref={headerRef}
-        className="sticky top-0 z-30 border-b"
+        className="sticky top-0 z-[1000] border-b"
         style={{ background: 'var(--c-brand)', borderColor: 'rgba(0,0,0,0.15)' }}
       >
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col items-center gap-y-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -219,9 +224,14 @@ export default function App() {
             </span>
           </button>
           <div className="flex flex-wrap justify-center sm:flex-nowrap sm:justify-start items-center gap-2">
-            <SearchBar value={searchQuery} onChange={setSearchQuery} />
+            <div data-tour="search">
+              <SearchBar value={searchQuery} onChange={setSearchQuery} />
+            </div>
             {!isSearching && (
-              <div className="inline-flex border border-white/30 rounded overflow-hidden text-sm">
+              <div
+                data-tour="view-toggle"
+                className="inline-flex border border-white/30 rounded overflow-hidden text-sm"
+              >
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
@@ -241,17 +251,23 @@ export default function App() {
             <div className="flex items-center gap-2">
               {!isSearching && (
                 <>
-                  <CategoryFilter
-                    selected={filter.selected}
-                    includeUncategorized={filter.includeUncategorized}
-                    onChange={setFilter}
-                  />
-                  <VenueFilter
-                    allVenues={allVenues}
-                    hiddenVenues={hiddenVenues}
-                    onChange={setHiddenVenues}
-                  />
-                  <DatePicker value={selectedDate} onChange={setSelectedDate} onDark />
+                  <div data-tour="categories">
+                    <CategoryFilter
+                      selected={filter.selected}
+                      includeUncategorized={filter.includeUncategorized}
+                      onChange={setFilter}
+                    />
+                  </div>
+                  <div data-tour="venues">
+                    <VenueFilter
+                      allVenues={allVenues}
+                      hiddenVenues={hiddenVenues}
+                      onChange={setHiddenVenues}
+                    />
+                  </div>
+                  <div data-tour="date-picker">
+                    <DatePicker value={selectedDate} onChange={setSelectedDate} onDark />
+                  </div>
                 </>
               )}
             </div>
@@ -355,6 +371,19 @@ export default function App() {
       </footer>
 
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+
+      {!isSearching && <HelpButton onClick={() => setHelpOpen(true)} />}
+      <HelpModal
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        onStartTour={() => {
+          setHelpOpen(false)
+          setTourRunning(true)
+        }}
+      />
+      {tourRunning && (
+        <Tour run mode={viewMode} onClose={() => setTourRunning(false)} />
+      )}
     </div>
   )
 }

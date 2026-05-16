@@ -197,6 +197,10 @@ The header has a List/Map segmented toggle. Both views consume the same `filtere
 
 `SearchBar` (`frontend/src/components/SearchBar.jsx`) lives in the header. Typing a non-empty query (debounced 250ms) hits `GET /events/search?q=` and replaces the date-based view with `SearchResults` (`frontend/src/components/SearchResults.jsx`), which groups matching events under sticky local-date headers and renders each event with the standard `EventCard`. While searching, the List/Map toggle, category/venue filters, and date picker are hidden — they don't apply to search results. Clearing the input (× button or Escape while focused) restores the date view.
 
+### Help & tour
+
+A floating `?` button in the bottom-right corner (`HelpButton.jsx`) opens a guide modal (`HelpModal.jsx`) that lists each header control with a small visual + one-line description. The modal's "Start interactive tour" button hands off to `Tour.jsx`, a thin wrapper over `react-joyride` that walks the user through the controls (search, view toggle, categories, venues, date picker, help), anchored via `data-tour="<id>"` attributes added to the wrapper around each control in `App.jsx`. The tour is mode-aware: `Tour.jsx` defines `LIST_STEPS` (full intro, covers every control) and `MAP_STEPS` (mini tour with map-tailored copy, skips the search step since search switches away from the map) and picks one based on the `mode` prop passed from `App.jsx`. The help button is hidden while a search query is active (the controls it explains are hidden too). The modal entries use the same visuals as the live controls — the category-filter glyph is the same inline SVG path used by `CategoryFilter.jsx`, and the List/Map entry renders a miniature of the segmented toggle — so users can identify the controls in the header. When renaming, moving, or replacing any of those header controls, keep the matching `data-tour="<id>"` attribute on its wrapper or update the steps in `Tour.jsx` to match.
+
 ```
 cd frontend
 npm install      # first time or after package.json changes
