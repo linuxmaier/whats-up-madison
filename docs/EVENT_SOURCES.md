@@ -59,9 +59,9 @@ These cover many venues and event types from a single source. Highest leverage i
 
 ### City of Madison
 - URL: https://www.cityofmadison.com/events
-- Scraper type prospect: html
-- Status: **investigating**
-- Notes: Official municipal events. Likely lower volume but high signal for civic/public events.
+- Scraper type: html
+- Status: **integrated**
+- Notes: Integrated for #71 in May 2026. Official municipal events — high signal for parks programming, civic meetings, community events, and public gatherings that are underrepresented on entertainment-focused aggregators. Drupal 10 site; events are server-side rendered HTML (no JSON API or iCal feed available). Listing at `/events?page=N` returns 10 events/page, ordered chronologically; scraper paginates until the forward window is exhausted (default 30 days). The site WAF returns 403 for paginated (`?page=N`) requests without a browser-like User-Agent, so the scraper sends a descriptive browser UA. Each event's detail page (`/parks/…/events/…`, `/monona-terrace/events/…`, etc.) carries a rich description in `.field.body.text-with-summary`; the scraper enriches each event with a 1 s/page courtesy delay. Volume: ~100–120 events per 30-day run. No source-category mapping: city events span a wide civic taxonomy that doesn't map cleanly to our closed set — descriptions are rich and the LLM tagger handles category assignment. Ranked lowest in `SOURCE_PRIORITY` (after Visit Madison); if an event appears on both the city site and a higher-ranked aggregator, the aggregator's richer entertainment copy wins.
 
 ### Downtown Madison Inc. (DMI)
 - URL: https://downtownmadison.org/wp-json/tribe/events/v1/events/?categories=dmi-events
