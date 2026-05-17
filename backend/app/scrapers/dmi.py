@@ -121,14 +121,6 @@ def _build_address(venue: dict) -> str | None:
     return ", ".join(parts) or None
 
 
-def _extract_image_url(image) -> str | None:
-    if isinstance(image, dict):
-        url = image.get("url")
-        if isinstance(url, str) and url:
-            return url
-    return None
-
-
 def _parse_event(doc: dict) -> RawEvent | None:
     venue = _venue_dict(doc.get("venue"))
     if not _in_madison_metro(venue):
@@ -181,7 +173,6 @@ def _parse_event(doc: dict) -> RawEvent | None:
         venue_name=venue_name,
         venue_address=venue_address,
         description=description,
-        image_url=_extract_image_url(doc.get("image")),
         categories=[],
         all_day=all_day,
         source_name="DMI",

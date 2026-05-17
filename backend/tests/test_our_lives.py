@@ -6,7 +6,6 @@ from app.scrapers.our_lives import (
     _CENTRAL,
     _build_address,
     _extract_categories,
-    _extract_image_url,
     _in_madison_metro,
     _parse_event,
     _venue_dict,
@@ -101,24 +100,6 @@ class TestBuildAddress:
 
 
 # ---------------------------------------------------------------------------
-# _extract_image_url
-# ---------------------------------------------------------------------------
-
-class TestExtractImageUrl:
-    def test_dict_with_url(self):
-        assert _extract_image_url({"url": "https://x/y.jpg"}) == "https://x/y.jpg"
-
-    def test_dict_without_url(self):
-        assert _extract_image_url({"sizes": {}}) is None
-
-    def test_empty_list(self):
-        assert _extract_image_url([]) is None
-
-    def test_none(self):
-        assert _extract_image_url(None) is None
-
-
-# ---------------------------------------------------------------------------
 # _extract_categories
 # ---------------------------------------------------------------------------
 
@@ -197,7 +178,6 @@ class TestParseEvent:
         assert ev.venue_name == "Delta Beer Lab"
         assert ev.venue_address == "167 E Badger Rd, Madison, WI 53713"
         assert ev.description == "Join us in the taproom for some good old fashioned Euchre!"
-        assert ev.image_url == "https://x/poster.png"
         # Community → Community & Clubs; Social is dropped.
         assert ev.categories == ["Community & Clubs"]
         assert ev.source_name == "Our Lives"
@@ -257,11 +237,6 @@ class TestParseEvent:
         ))
         assert ev is not None
         assert ev.start_at.date() != ev.end_at.date()
-
-    def test_missing_image_yields_none(self):
-        ev = _parse_event(_base_doc(image=[]))
-        assert ev is not None
-        assert ev.image_url is None
 
     def test_missing_title_returns_none(self):
         assert _parse_event(_base_doc(title="")) is None

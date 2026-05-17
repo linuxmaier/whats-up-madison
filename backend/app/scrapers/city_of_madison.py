@@ -181,7 +181,6 @@ def _parse_item(content: Tag) -> RawEvent | None:
         venue_name=venue_name,
         venue_address=venue_address,
         description=None,
-        image_url=None,
         categories=[],
         all_day=all_day,
         source_name="City of Madison",

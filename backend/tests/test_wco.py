@@ -159,7 +159,6 @@ class TestParseRow:
         # description starts as the subtitle; detail-page enrichment in
         # fetch() replaces it when the network call succeeds.
         assert ev.description == "Jeans 'n Classics"
-        assert ev.image_url == "https://example.com/poster.jpg"
         assert ev.categories == ["Music"]
         assert ev.source_name == "Wisconsin Chamber Orchestra"
         assert ev.source_url == (

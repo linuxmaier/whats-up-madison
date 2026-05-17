@@ -32,7 +32,7 @@ Run the bundled sampler against production:
 
 (The script is stdlib-only, so any Python 3.10+ works in principle. Use the conda env's interpreter explicitly — `python` is not reliably on `PATH` on the maintainer's machine and the project convention in `CLAUDE.md` is to use the conda env's full path for all project tooling.)
 
-The script fetches `GET /events?date=` for 7 forward dates spread across the next 14 days, deduplicates by event ID, buckets events by their primary source, and emits JSONL on stdout — one line per sampled event. Each record carries `id`, `title`, `start_at`, `end_at`, `all_day`, `venue_name`, `venue_address`, `categories`, `image_url`, the full `sources` array, a 500-char `description_preview`, and a `description_truncated` flag.
+The script fetches `GET /events?date=` for 7 forward dates spread across the next 14 days, deduplicates by event ID, buckets events by their primary source, and emits JSONL on stdout — one line per sampled event. Each record carries `id`, `title`, `start_at`, `end_at`, `all_day`, `venue_name`, `venue_address`, `categories`, the full `sources` array, a 500-char `description_preview`, and a `description_truncated` flag.
 
 Flags:
 - `--per-source N` — sample size per source (default 3, ~18 events total).
@@ -93,7 +93,7 @@ gh issue create \
   --body "$(cat <<'EOF'
 **Kind:** field-accuracy
 **Primary source:** <Source Name>
-**Field:** <title|start_at|end_at|venue_name|venue_address|description|categories|image_url>
+**Field:** <title|start_at|end_at|venue_name|venue_address|description|categories>
 
 **Pattern:** <one line shared across all examples — e.g. "High Noon descriptions contain only the FPC LIVE heading; the artist bio body is dropped.">
 

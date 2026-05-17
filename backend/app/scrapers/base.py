@@ -22,7 +22,6 @@ class RawEvent:
     end_at: Optional[datetime] = None
     venue_name: Optional[str] = None
     venue_address: Optional[str] = None
-    image_url: Optional[str] = None
     categories: list[str] = field(default_factory=list)
     all_day: bool = False
 

@@ -5,7 +5,6 @@ from zoneinfo import ZoneInfo
 from app.scrapers.dmi import (
     _CENTRAL,
     _build_address,
-    _extract_image_url,
     _in_madison_metro,
     _parse_event,
     _venue_dict,
@@ -79,22 +78,6 @@ class TestBuildAddress:
 
 
 # ---------------------------------------------------------------------------
-# _extract_image_url — note DMI often ships "image": false
-# ---------------------------------------------------------------------------
-
-class TestExtractImageUrl:
-    def test_dict_with_url(self):
-        assert _extract_image_url({"url": "https://x/y.jpg"}) == "https://x/y.jpg"
-
-    def test_false_returns_none(self):
-        # Real DMI events often have `"image": false`. Our helper must not crash.
-        assert _extract_image_url(False) is None
-
-    def test_none_returns_none(self):
-        assert _extract_image_url(None) is None
-
-
-# ---------------------------------------------------------------------------
 # _parse_event
 # ---------------------------------------------------------------------------
 
@@ -139,7 +122,6 @@ class TestParseEvent:
         assert ev.venue_address == "1001 Wisconsin Place, Madison, WI 53703"
         # DMI events deliberately ship no pre-mapped categories — LLM tagger handles them.
         assert ev.categories == []
-        assert ev.image_url is None
         assert ev.source_name == "DMI"
         assert ev.source_url == "https://downtownmadison.org/event/whats-up-downtown-2026-05-28/"
 

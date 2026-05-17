@@ -308,7 +308,6 @@ def _to_raw_events(doc: dict) -> list[RawEvent]:
     venue_address = _build_address(doc)
     raw_desc = doc.get("description") or doc.get("teaser") or ""
     description = clean_html_text(raw_desc) or None
-    image_url = (((doc.get("media_raw") or [{}])[0]).get("mediaurl")) or None
     source_url = doc.get("absoluteUrl") or doc.get("url") or _EVENTS_PAGE_URL
     categories = _map_categories(doc)
 
@@ -320,7 +319,6 @@ def _to_raw_events(doc: dict) -> list[RawEvent]:
             venue_name=venue_name,
             venue_address=venue_address,
             description=desc,
-            image_url=image_url,
             categories=list(categories),
             all_day=all_day,
             source_name="Visit Madison",

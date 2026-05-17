@@ -13,7 +13,7 @@ Each entry should include:
 
 ## Overall
 
-*(No project-wide exceptions yet. Add entries here when an insight applies across every source — e.g., "don't flag missing image_url if the source page also lacks a hero image.")*
+*(No project-wide exceptions yet. Add entries here when an insight applies across every source — e.g., "don't flag missing descriptions if the source page also lacks a description body.")*
 
 ## Per-source
 

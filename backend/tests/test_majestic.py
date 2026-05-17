@@ -284,7 +284,6 @@ class TestParseCard:
         assert ev.venue_name == "Majestic Theatre"
         assert ev.venue_address == "115 King St, Madison, WI 53703"
         assert ev.description == "FPC LIVE PRESENTS\nwith Mama Digdown's Brass Band"
-        assert ev.image_url == "https://majesticmadison.com/wp-content/uploads/sites/8/2026/03/RBB.jpg"
         assert ev.categories == ["Music"]
         assert ev.source_name == "Majestic Theatre"
         assert ev.source_url == "https://majesticmadison.com/event/rebirth-brass-band/"

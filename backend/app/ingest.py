@@ -24,7 +24,7 @@ SOURCE_PRIORITY = ["High Noon Saloon", "Atwood Music Hall", "Majestic Theatre", 
 # initially trusted them — without overwrite the bug data would stick post-fix).
 # canonical_hash keys on the start *date*, not time, so same-day corrections don't
 # break dedup; for cross-date corrections the row would simply be inserted as new.
-_OVERWRITABLE_FIELDS = ("title", "description", "start_at", "end_at", "venue_name", "venue_address", "image_url")
+_OVERWRITABLE_FIELDS = ("title", "description", "start_at", "end_at", "venue_name", "venue_address")
 
 FUZZY_TITLE_THRESHOLD = 0.65  # tuned empirically against the Isthmus + Visit Madison overlap
 
@@ -69,7 +69,6 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
                 end_at=raw.end_at,
                 venue_name=raw.venue_name,
                 venue_address=raw.venue_address,
-                image_url=raw.image_url,
                 categories=list(raw.categories),
                 all_day=raw.all_day,
                 canonical_hash=hash_,

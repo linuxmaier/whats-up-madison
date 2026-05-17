@@ -189,7 +189,6 @@ class TestParseCard:
         assert ev.all_day is False
         assert ev.venue_name == "Atwood Music Hall"
         assert ev.venue_address == "1925 Winnebago Avenue Madison, WI 53704"
-        assert ev.image_url == "https://images.example.com/data-image.jpg"
         assert ev.description == "Doors 6PM Show 7PM\n\nEarly Bird: $25"
         assert ev.categories == []
         assert ev.source_name == "Atwood Music Hall"
@@ -306,14 +305,6 @@ class TestParseCard:
             "",
         )
         assert _parse_card(_card(html)) is None
-
-    def test_image_falls_back_to_src(self):
-        html = _FULL_CARD_HTML.replace(
-            'data-image="https://images.example.com/data-image.jpg" ', ""
-        )
-        ev = _parse_card(_card(html))
-        assert ev is not None
-        assert ev.image_url == "https://images.example.com/src.jpg"
 
     def test_missing_address_falls_back_to_default_venue(self):
         # Card with no address li at all.

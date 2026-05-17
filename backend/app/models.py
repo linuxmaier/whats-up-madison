@@ -19,7 +19,6 @@ class Event(Base):
     latitude = Column(Float)
     longitude = Column(Float)
     categories = Column(ARRAY(String), default=[])
-    image_url = Column(String)
     all_day = Column(Boolean, nullable=False, server_default="false")
     canonical_hash = Column(String, unique=True, nullable=False)
     status = Column(String, nullable=False, server_default="active")
