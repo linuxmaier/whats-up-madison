@@ -383,6 +383,34 @@ def test_non_canonical_venue_address_is_left_untouched(db):
 
 
 # ---------------------------------------------------------------------------
+# 9. Canonical-venue alias normalization for dedup (#215): sources that use
+#    a verbose subtitle form of a venue name ("Aubergine: A Willy Street
+#    Co-Op Community Space") must merge with sources that use the short form
+#    ("Aubergine") because both normalize to the same canonical_name before
+#    canonical_hash runs.
+# ---------------------------------------------------------------------------
+
+def test_venue_alias_normalizes_for_dedup(db):
+    ingest_events(
+        "Visit Madison",
+        [_raw(title="Story Hour", venue_name="Aubergine: A Willy Street Co-Op Community Space")],
+        db,
+    )
+    ingest_events(
+        "Isthmus",
+        [_raw(title="Story Hour", venue_name="Aubergine", source_url="https://isthmus.com/e/1")],
+        db,
+    )
+
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+    event = db.query(Event).one()
+    assert event.venue_name == "Aubergine"
+    assert event.venue_address == "1226 Williamson St, Madison, WI 53703"
+
+
+# ---------------------------------------------------------------------------
 # 9. Source-priority overwrite (#114): higher-trust source overwrites fields
 #    set by a lower-trust source; lower-trust source cannot overwrite back.
 # ---------------------------------------------------------------------------
