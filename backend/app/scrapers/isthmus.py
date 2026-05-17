@@ -77,6 +77,13 @@ def _extract_categories(soup: BeautifulSoup) -> list[str]:
     return result
 
 
+def _extract_venue_address(soup: BeautifulSoup) -> str | None:
+    addr_span = soup.find("span", class_="address")
+    if not addr_span:
+        return None
+    return " ".join(addr_span.get_text().split()) or None
+
+
 class IsthmusSource(BaseSource):
     name = "Isthmus"
     scraper_type = "ical"
@@ -224,11 +231,13 @@ def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
             time.sleep(_FETCH_DELAY)
             description = _extract_description(soup, link) if soup is not None else None
             categories = _extract_categories(soup) if soup is not None else []
+            venue_address = _extract_venue_address(soup) if soup is not None else None
 
             events.append(RawEvent(
                 title=event_name,
                 start_at=start_at,
                 venue_name=venue_name or None,
+                venue_address=venue_address,
                 description=description,
                 source_name="Isthmus",
                 source_url=link,
@@ -288,11 +297,13 @@ def _parse_ical(
         # Always fetch the detail page so we can extract Isthmus's own category
         # tags (the iCal/RSS feeds carry none); use the same fetch to enrich
         # short iCal descriptions.
+        venue_address: str | None = None
         categories: list[str] = []
         soup = _fetch_detail_soup(source_url)
         time.sleep(_FETCH_DELAY)
         if soup is not None:
             categories = _extract_categories(soup)
+            venue_address = _extract_venue_address(soup)
             if len(description or "") < _DESC_MIN_LEN:
                 short_count += 1
                 enriched = _extract_description(soup, source_url)
@@ -310,6 +321,7 @@ def _parse_ical(
             start_at=start_at,
             end_at=end_at,
             venue_name=venue_name,
+            venue_address=venue_address,
             description=description,
             source_name="Isthmus",
             source_url=source_url,
