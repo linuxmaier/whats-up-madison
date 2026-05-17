@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from app.scrapers.isthmus import _CATEGORY_MAP, _extract_categories, _parse_ical
+from app.scrapers.isthmus import _CATEGORY_MAP, _extract_categories, _extract_venue_address, _parse_ical
 
 
 def _soup(html: str) -> BeautifulSoup:
@@ -73,6 +73,30 @@ class TestExtractCategories:
         assert _extract_categories(_soup(html)) == []
 
 
+class TestExtractVenueAddress:
+    def test_full_postaladdress_markup(self):
+        # Matches the real Isthmus schema.org PostalAddress shape confirmed via curl.
+        html = """
+            <span class="address">
+              <span itemprop="address" itemscope="" itemtype="https://schema.org/PostalAddress">
+                <span itemprop="streetAddress">101 N. Main St.</span>,
+                <span itemprop="addressLocality">Verona</span>,
+                <span itemprop="addressRegion">Wisconsin</span>
+                <span itemprop="postalCode">53593</span>
+              </span>
+            </span>
+        """
+        assert _extract_venue_address(_soup(html)) == "101 N. Main St., Verona, Wisconsin 53593"
+
+    def test_missing_address_span_returns_none(self):
+        html = "<html><body><h1>No address here</h1></body></html>"
+        assert _extract_venue_address(_soup(html)) is None
+
+    def test_extra_whitespace_normalized(self):
+        html = """<span class="address">  123   Main St. ,  Madison ,  Wisconsin   53703  </span>"""
+        assert _extract_venue_address(_soup(html)) == "123 Main St. , Madison , Wisconsin 53703"
+
+
 _MINIMAL_SOUP = BeautifulSoup("<html><body></body></html>", "lxml")
 
 # Shared URL / date values for _parse_ical tests.
@@ -99,6 +123,19 @@ DTEND;TZID=America/Chicago:20260516T210000
 SUMMARY:Test Event
 END:VEVENT
 END:VCALENDAR"""
+
+_SOUP_WITH_ADDRESS = BeautifulSoup("""
+<html><body>
+  <span class="address">
+    <span itemprop="address" itemscope="" itemtype="https://schema.org/PostalAddress">
+      <span itemprop="streetAddress">1326 MacArthur Road</span>,
+      <span itemprop="addressLocality">Madison</span>,
+      <span itemprop="addressRegion">Wisconsin</span>
+      <span itemprop="postalCode">53714</span>
+    </span>
+  </span>
+</body></html>
+""", "lxml")
 
 
 class TestParseIcal:
@@ -127,6 +164,28 @@ class TestParseIcal:
         assert len(events) == 1
         assert events[0].end_at is not None
         assert events[0].end_at != events[0].start_at
+
+    def test_venue_address_extracted_from_detail_page(self):
+        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=_SOUP_WITH_ADDRESS), \
+             patch("time.sleep"):
+            events = _parse_ical(
+                _TEST_START, _TEST_END,
+                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
+                ical_content=_ICAL_NO_DTEND,
+            )
+        assert len(events) == 1
+        assert events[0].venue_address == "1326 MacArthur Road, Madison, Wisconsin 53714"
+
+    def test_venue_address_null_when_detail_page_unavailable(self):
+        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
+             patch("time.sleep"):
+            events = _parse_ical(
+                _TEST_START, _TEST_END,
+                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
+                ical_content=_ICAL_NO_DTEND,
+            )
+        assert len(events) == 1
+        assert events[0].venue_address is None
 
 
 class TestCategoryMap:
