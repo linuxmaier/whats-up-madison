@@ -59,6 +59,18 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "king street corner of the capitol square": CanonicalVenue(
         43.0746917, -89.3841658, "Capitol Square, Madison, WI 53703"
     ),
+    # Aubergine — Willy Street Co-op community space at 1226 Williamson St.
+    # Visit Madison uses the verbose subtitle form ("Aubergine: A Willy Street
+    # Co-Op Community Space") while Isthmus uses just "Aubergine"; the alias
+    # entry normalizes the long form to "Aubergine" before hashing so both
+    # sources produce the same canonical_hash and dedup into one row (#215).
+    "aubergine": CanonicalVenue(
+        43.0840219, -89.3637186, "1226 Williamson St, Madison, WI 53703"
+    ),
+    "aubergine: a willy street co-op community space": CanonicalVenue(
+        43.0840219, -89.3637186, "1226 Williamson St, Madison, WI 53703",
+        canonical_name="Aubergine",
+    ),
     # Overture Center building names — the canonical display name is
     # "Overture Center for the Arts"; all sub-room and alias entries
     # below carry canonical_name so ingest normalizes them before hashing.
