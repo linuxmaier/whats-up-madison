@@ -350,6 +350,26 @@ class TestParseEvent:
     def test_missing_url_returns_none(self):
         assert _parse_event(_doc(url="")) is None
 
+    def test_api_url_used_directly_when_event_id_present(self):
+        # Regression for #206: slug URLs constructed from metadata 404 because
+        # TM's internal slug generation can't be replicated exactly. Use the
+        # URL the Discovery API returns for the event instead.
+        api_url = "https://www.ticketmaster.com/foo-madison-wi-01-01-2026/event/ABC123"
+        doc = _doc(url=api_url)
+        doc["id"] = "ABC123"
+        ev = _parse_event(doc)
+        assert ev is not None
+        assert ev.source_url == api_url
+
+    def test_fallback_to_short_event_url_when_api_url_missing(self):
+        # When the url field is absent but id is present, fall back to the
+        # bare /event/<id> URL rather than dropping the event entirely.
+        doc = _doc(url="")
+        doc["id"] = "ABC123"
+        ev = _parse_event(doc)
+        assert ev is not None
+        assert ev.source_url == "https://www.ticketmaster.com/event/ABC123"
+
     def test_missing_venue_returns_none(self):
         doc = _doc()
         doc["_embedded"] = {"venues": []}
