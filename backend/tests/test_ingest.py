@@ -411,6 +411,37 @@ def test_venue_alias_normalizes_for_dedup(db):
 
 
 # ---------------------------------------------------------------------------
+# 10. City-suffix venue alias normalization for dedup (#216): Isthmus ships
+#     "Holy Wisdom Monastery, Middleton" (name + city) while Visit Madison
+#     ships "Holy Wisdom Monastery"; the alias maps the city-suffixed form to
+#     the bare name so both sources produce the same canonical_hash.
+# ---------------------------------------------------------------------------
+
+def test_city_suffix_venue_alias_normalizes_for_dedup(db):
+    ingest_events(
+        "Visit Madison",
+        [_raw(title="Kids on the Prairie", venue_name="Holy Wisdom Monastery")],
+        db,
+    )
+    ingest_events(
+        "Isthmus",
+        [_raw(
+            title="Kids on the Prairie",
+            venue_name="Holy Wisdom Monastery, Middleton",
+            source_url="https://isthmus.com/e/1",
+        )],
+        db,
+    )
+
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+    event = db.query(Event).one()
+    assert event.venue_name == "Holy Wisdom Monastery"
+    assert event.venue_address == "4200 County Road M, Middleton, WI 53562"
+
+
+# ---------------------------------------------------------------------------
 # 9. Source-priority overwrite (#114): higher-trust source overwrites fields
 #    set by a lower-trust source; lower-trust source cannot overwrite back.
 # ---------------------------------------------------------------------------
