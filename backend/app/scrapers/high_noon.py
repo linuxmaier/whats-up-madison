@@ -141,9 +141,6 @@ def _parse_card(card) -> RawEvent | None:
         _text(card, ".event-supporting-acts"),
     )
 
-    image_el = card.select_one(".event-top img")
-    image_url = image_el.get("src") if image_el is not None else None
-
     return RawEvent(
         title=title,
         start_at=start_at,
@@ -151,7 +148,6 @@ def _parse_card(card) -> RawEvent | None:
         venue_name=venue_name,
         venue_address=venue_address,
         description=description,
-        image_url=image_url,
         categories=_extract_categories(card),
         all_day=all_day,
         source_name="High Noon Saloon",

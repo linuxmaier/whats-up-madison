@@ -146,13 +146,6 @@ def _extract_source_url(row: Tag) -> str | None:
     return None
 
 
-def _extract_image(row: Tag) -> str | None:
-    img = row.select_one("a.image img")
-    if img is None:
-        return None
-    return img.get("src")
-
-
 def _fetch_detail_description(url: str) -> str | None:
     """Pull event-specific show copy from the detail page.
 
@@ -213,7 +206,6 @@ def _parse_row(row: Tag) -> RawEvent | None:
         venue_name=venue_name,
         venue_address=None,
         description=subtitle,
-        image_url=_extract_image(row),
         categories=["Music"],
         all_day=all_day,
         source_name="Wisconsin Chamber Orchestra",

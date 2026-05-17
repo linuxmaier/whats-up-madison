@@ -137,13 +137,6 @@ def _normalize_address(raw: str) -> str | None:
     return s or None
 
 
-def _extract_image(card: Tag) -> str | None:
-    img = card.select_one(".eventlist-column-thumbnail img")
-    if img is None:
-        return None
-    return img.get("data-image") or img.get("src")
-
-
 def _extract_description(card: Tag) -> str | None:
     excerpt = card.select_one(".eventlist-excerpt")
     if excerpt is None:
@@ -263,7 +256,6 @@ def _parse_card(card: Tag, detail_desc: str | None = None) -> RawEvent | None:
         venue_name=venue_name,
         venue_address=venue_address,
         description=description,
-        image_url=_extract_image(card),
         categories=[],
         all_day=all_day,
         source_name="Atwood Music Hall",

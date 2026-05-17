@@ -124,7 +124,6 @@ def main() -> int:
                 "categories": event.get("categories", []),
                 "description_preview": desc,
                 "description_truncated": truncated,
-                "image_url": event.get("image_url"),
                 "sources": event.get("sources", []),
                 "primary_source": source,
                 "pool_size_for_source": len(events),

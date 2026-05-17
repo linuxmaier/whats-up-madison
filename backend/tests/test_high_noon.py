@@ -180,7 +180,6 @@ class TestParseCard:
         assert ev.venue_name == "High Noon Saloon"
         assert ev.venue_address == "701 E. Washington Ave, Madison, WI 53703"
         assert ev.description == "FPC LIVE PRESENTS\nwith Kaleb Sanders"
-        assert ev.image_url == "https://example.com/poster.jpg"
         assert ev.categories == ["Music"]
         assert ev.source_name == "High Noon Saloon"
         assert ev.source_url == "https://high-noon.com/event/kylie-morgan/"

@@ -223,23 +223,6 @@ def _build_address(venue: dict) -> str | None:
     return ", ".join(parts) or None
 
 
-def _select_image(images: list[dict]) -> str | None:
-    """Pick the largest 16:9 image; fall back to the first usable URL."""
-    best: dict | None = None
-    for img in images or []:
-        if not isinstance(img, dict) or not img.get("url"):
-            continue
-        if img.get("ratio") == "16_9":
-            if best is None or (img.get("width") or 0) > (best.get("width") or 0):
-                best = img
-    if best is not None:
-        return best.get("url")
-    for img in images or []:
-        if isinstance(img, dict) and img.get("url"):
-            return img["url"]
-    return None
-
-
 def _map_categories(classifications: list[dict]) -> list[str]:
     if not classifications:
         return []
@@ -303,7 +286,6 @@ def _parse_event(doc: dict) -> RawEvent | None:
 
     venue_name = (venue.get("name") or "").strip() or None
     venue_address = _build_address(venue)
-    image_url = _select_image(doc.get("images") or [])
     categories = _map_categories(doc.get("classifications") or [])
 
     source_url = (doc.get("url") or "").strip()
@@ -321,7 +303,6 @@ def _parse_event(doc: dict) -> RawEvent | None:
         venue_name=venue_name,
         venue_address=venue_address,
         description=description,
-        image_url=image_url,
         categories=categories,
         all_day=all_day,
         source_name="Ticketmaster",

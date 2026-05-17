@@ -8,7 +8,6 @@ from app.scrapers.ticketmaster import (
     _choose_description,
     _map_categories,
     _parse_event,
-    _select_image,
 )
 
 
@@ -100,7 +99,6 @@ def _doc(
     ),
     please_note=None,
     venue=None,
-    images=None,
     classifications=None,
     time_tba=False,
     no_specific_time=False,
@@ -137,8 +135,6 @@ def _doc(
         doc["info"] = info
     if please_note is not None:
         doc["pleaseNote"] = please_note
-    if images is not None:
-        doc["images"] = images
     if classifications is not None:
         doc["classifications"] = classifications
     return doc
@@ -174,36 +170,6 @@ class TestBuildAddress:
 
     def test_empty_returns_none(self):
         assert _build_address({}) is None
-
-
-# ---------------------------------------------------------------------------
-# _select_image
-# ---------------------------------------------------------------------------
-
-class TestSelectImage:
-    def test_picks_largest_16_9(self):
-        images = [
-            {"ratio": "16_9", "url": "small.jpg", "width": 205},
-            {"ratio": "16_9", "url": "large.jpg", "width": 1136},
-            {"ratio": "3_2", "url": "wrong-ratio.jpg", "width": 2000},
-        ]
-        assert _select_image(images) == "large.jpg"
-
-    def test_falls_back_to_first_when_no_16_9(self):
-        images = [
-            {"ratio": "3_2", "url": "fallback.jpg", "width": 305},
-        ]
-        assert _select_image(images) == "fallback.jpg"
-
-    def test_skips_entries_without_url(self):
-        images = [
-            {"ratio": "16_9", "width": 1136},  # no url
-            {"ratio": "16_9", "url": "ok.jpg", "width": 640},
-        ]
-        assert _select_image(images) == "ok.jpg"
-
-    def test_empty(self):
-        assert _select_image([]) is None
 
 
 # ---------------------------------------------------------------------------
@@ -271,10 +237,6 @@ class TestParseEvent:
     def test_full_happy_path(self):
         ev = _parse_event(_doc(
             classifications=[_cls("Music", "Rock")],
-            images=[
-                {"ratio": "16_9", "url": "https://img/large.jpg", "width": 1136},
-                {"ratio": "3_2", "url": "https://img/wrong.jpg", "width": 2000},
-            ],
         ))
         assert ev is not None
         assert ev.title == "Modest Mouse"
@@ -285,7 +247,6 @@ class TestParseEvent:
         assert ev.venue_address == "25 S. Livingston Street, Madison, WI 53703"
         assert ev.description is not None
         assert ev.description.startswith("Modest Mouse return")
-        assert ev.image_url == "https://img/large.jpg"
         assert ev.categories == ["Music"]
         assert ev.source_name == "Ticketmaster"
         assert ev.source_url == "https://www.ticketmaster.com/modest-mouse/event/abc"

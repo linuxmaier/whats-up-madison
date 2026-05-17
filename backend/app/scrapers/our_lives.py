@@ -141,14 +141,6 @@ def _build_address(venue: dict) -> str | None:
     return ", ".join(parts) or None
 
 
-def _extract_image_url(image) -> str | None:
-    if isinstance(image, dict):
-        url = image.get("url")
-        if isinstance(url, str) and url:
-            return url
-    return None
-
-
 def _extract_categories(api_categories) -> list[str]:
     if not isinstance(api_categories, list):
         return []
@@ -215,7 +207,6 @@ def _parse_event(doc: dict) -> RawEvent | None:
         venue_name=venue_name,
         venue_address=venue_address,
         description=description,
-        image_url=_extract_image_url(doc.get("image")),
         categories=_extract_categories(doc.get("categories")),
         all_day=all_day,
         source_name="Our Lives",

@@ -37,7 +37,6 @@ class EventResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     categories: list[str] = []
-    image_url: Optional[str] = None
     all_day: bool = False
     status: str
     sources: list[SourceRef] = []
