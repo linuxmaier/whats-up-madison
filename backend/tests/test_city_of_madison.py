@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 
 from app.scrapers.city_of_madison import (
     _CENTRAL,
+    _parse_address_from_span,
     _parse_item,
     _parse_start_at,
     _parse_time_range,
@@ -226,3 +227,31 @@ class TestParseItem:
             "<time>",
         )
         assert _parse_item(_content(html)) is None
+
+
+# ---------------------------------------------------------------------------
+# _parse_address_from_span
+# ---------------------------------------------------------------------------
+
+class TestParseAddressFromSpan:
+    def test_single_line(self):
+        soup = BeautifulSoup("<span>3747 Speedway Road</span>", "lxml")
+        assert _parse_address_from_span(soup.select_one("span")) == "3747 Speedway Road"
+
+    def test_multiline_with_br(self):
+        soup = BeautifulSoup(
+            "<span>330 West Mifflin Street<br/>Madison, WI 53703-2514</span>", "lxml"
+        )
+        assert _parse_address_from_span(soup.select_one("span")) == (
+            "330 West Mifflin Street, Madison, WI 53703-2514"
+        )
+
+    def test_empty_span(self):
+        soup = BeautifulSoup("<span></span>", "lxml")
+        assert _parse_address_from_span(soup.select_one("span")) is None
+
+    def test_whitespace_only_lines_skipped(self):
+        soup = BeautifulSoup("<span>  \n  330 West Mifflin Street\n  <br/>  \n  Madison, WI 53703\n  </span>", "lxml")
+        assert _parse_address_from_span(soup.select_one("span")) == (
+            "330 West Mifflin Street, Madison, WI 53703"
+        )

@@ -57,12 +57,14 @@ class CityOfMadisonSource(BaseSource):
         ok = fail = 0
         for ev in raw_events:
             time.sleep(_DETAIL_SLEEP)
-            desc = _fetch_detail_description(ev.source_url)
+            desc, full_addr = _fetch_detail(ev.source_url)
             if desc:
                 ev.description = desc
                 ok += 1
             else:
                 fail += 1
+            if full_addr:
+                ev.venue_address = full_addr
 
         logger.info(
             "City of Madison: %d events, detail enrichment %d/%d succeeded",
@@ -170,9 +172,7 @@ def _parse_item(content: Tag) -> RawEvent | None:
             venue_name = name_el.get_text(strip=True) or None
         street_el = addr_el.select_one("span")
         if street_el:
-            street = street_el.get_text(strip=True)
-            if street:
-                venue_address = street
+            venue_address = _parse_address_from_span(street_el)
 
     return RawEvent(
         title=title,
@@ -189,16 +189,32 @@ def _parse_item(content: Tag) -> RawEvent | None:
     )
 
 
-def _fetch_detail_description(url: str) -> str | None:
-    """Pull the event description from the detail page."""
+def _parse_address_from_span(span_el: Tag) -> str | None:
+    """Join all text lines from an address <span>, handling <br> separators."""
+    parts = [t.strip() for t in span_el.strings if t.strip()]
+    return ", ".join(parts) if parts else None
+
+
+def _fetch_detail(url: str) -> tuple[str | None, str | None]:
+    """Pull description and full venue address from the detail page."""
     try:
         resp = http_get_with_retry(url, headers={"User-Agent": _USER_AGENT}, timeout=15)
     except Exception as exc:
         logger.warning("City of Madison: failed to fetch detail page %s: %s", url, exc)
-        return None
+        return None, None
     soup = BeautifulSoup(resp.content, "lxml")
+
+    description: str | None = None
     body = soup.select_one(".field.body.text-with-summary")
-    if body is None:
-        return None
-    text = clean_html_text(body.get_text(" ", strip=True))
-    return text or None
+    if body is not None:
+        text = clean_html_text(body.get_text(" ", strip=True))
+        description = text or None
+
+    venue_address: str | None = None
+    addr_el = soup.select_one("address")
+    if addr_el is not None:
+        span_el = addr_el.select_one("span")
+        if span_el is not None:
+            venue_address = _parse_address_from_span(span_el)
+
+    return description, venue_address
