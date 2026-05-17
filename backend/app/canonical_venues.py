@@ -71,6 +71,17 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
         43.0840219, -89.3637186, "1226 Williamson St, Madison, WI 53703",
         canonical_name="Aubergine",
     ),
+    # Holy Wisdom Monastery — Isthmus iCal LOCATION ships "Holy Wisdom Monastery,
+    # Middleton" (name + city suffix) while Visit Madison uses just "Holy Wisdom
+    # Monastery". The alias entry normalizes the city-suffixed form to the bare name
+    # before hashing so both sources produce the same canonical_hash (#216).
+    "holy wisdom monastery": CanonicalVenue(
+        43.1218569, -89.4493683, "4200 County Road M, Middleton, WI 53562"
+    ),
+    "holy wisdom monastery, middleton": CanonicalVenue(
+        43.1218569, -89.4493683, "4200 County Road M, Middleton, WI 53562",
+        canonical_name="Holy Wisdom Monastery",
+    ),
     # Overture Center building names — the canonical display name is
     # "Overture Center for the Arts"; all sub-room and alias entries
     # below carry canonical_name so ingest normalizes them before hashing.
