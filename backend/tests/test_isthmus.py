@@ -1,7 +1,10 @@
 """Unit tests for isthmus.py detail-page extraction helpers."""
+from datetime import date
+from unittest.mock import patch
+
 from bs4 import BeautifulSoup
 
-from app.scrapers.isthmus import _CATEGORY_MAP, _extract_categories
+from app.scrapers.isthmus import _CATEGORY_MAP, _extract_categories, _parse_ical
 
 
 def _soup(html: str) -> BeautifulSoup:
@@ -68,6 +71,62 @@ class TestExtractCategories:
             </div>
         """
         assert _extract_categories(_soup(html)) == []
+
+
+_MINIMAL_SOUP = BeautifulSoup("<html><body></body></html>", "lxml")
+
+# Shared URL / date values for _parse_ical tests.
+# between() needs start < end to include the event date (same start==end returns nothing).
+_TEST_START = date(2026, 5, 15)
+_TEST_END = date(2026, 5, 17)
+_TEST_URL = "https://isthmus.com/events/test-event/?occ_dtstart=2026-05-16T19:00"
+_TEST_URL_MAP: dict = {("test event", "2026-05-16", ""): _TEST_URL}
+_TEST_TITLE_DATE_MAP: dict = {("test event", "2026-05-16"): _TEST_URL}
+
+_ICAL_NO_DTEND = b"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART;TZID=America/Chicago:20260516T190000
+SUMMARY:Test Event
+END:VEVENT
+END:VCALENDAR"""
+
+_ICAL_WITH_DTEND = b"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART;TZID=America/Chicago:20260516T190000
+DTEND;TZID=America/Chicago:20260516T210000
+SUMMARY:Test Event
+END:VEVENT
+END:VCALENDAR"""
+
+
+class TestParseIcal:
+    def test_no_dtend_yields_null_end_at(self):
+        # recurring_ical_events fills DTEND=DTSTART when the feed has no DTEND;
+        # _parse_ical must treat that zero-duration result as end_at=None.
+        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=_MINIMAL_SOUP), \
+             patch("time.sleep"):
+            events = _parse_ical(
+                _TEST_START, _TEST_END,
+                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
+                ical_content=_ICAL_NO_DTEND,
+            )
+        assert len(events) == 1
+        assert events[0].end_at is None
+
+    def test_explicit_dtend_preserved(self):
+        # When an event has a real end time, it must survive the fix.
+        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=_MINIMAL_SOUP), \
+             patch("time.sleep"):
+            events = _parse_ical(
+                _TEST_START, _TEST_END,
+                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
+                ical_content=_ICAL_WITH_DTEND,
+            )
+        assert len(events) == 1
+        assert events[0].end_at is not None
+        assert events[0].end_at != events[0].start_at
 
 
 class TestCategoryMap:

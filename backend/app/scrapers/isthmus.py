@@ -265,6 +265,8 @@ def _parse_ical(
         start_at = _to_aware_datetime(comp.get("DTSTART").dt)
         dtend = comp.get("DTEND")
         end_at = _to_aware_datetime(dtend.dt) if dtend else None
+        if end_at is not None and end_at == start_at:
+            end_at = None
 
         raw_location = comp.get("LOCATION")
         venue_name = str(raw_location).strip() or None if raw_location else None
