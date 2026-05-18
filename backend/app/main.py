@@ -178,6 +178,12 @@ def trigger_scrape(
         except Exception as e:
             results[s.name] = {"error": str(e)}
             logger.warning("Scrape failed: %s — %s", s.name, e)
+            # Clear any pending/invalid transaction state so the next scraper
+            # gets a usable session. Without this, a mid-ingest DB error (e.g.
+            # an SSL connection drop) leaves the session unusable and every
+            # subsequent scraper fails with "Can't reconnect until invalid
+            # transaction is rolled back".
+            db.rollback()
             continue
         if days is not None and not s.supports_window_days:
             # Surface the no-op so a caller passing ?days=N knows the filter
@@ -192,6 +198,7 @@ def trigger_scrape(
         except Exception as e:
             results[s.name]["geocode_error"] = str(e)
             logger.warning("Geocode failed: %s — %s", s.name, e)
+            db.rollback()
     if not skip_tag:
         try:
             results["_tagging"] = tag_untagged_events(db)
