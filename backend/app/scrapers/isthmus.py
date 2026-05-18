@@ -7,7 +7,9 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
+from sqlalchemy.orm import Session
 
+from app.database import SessionLocal
 from app.scrapers.base import BaseSource, RawEvent, clean_html_text, http_get_with_retry
 
 logger = logging.getLogger(__name__)
@@ -140,10 +142,19 @@ class IsthmusSource(BaseSource):
         # today's events from the scrape window.
         today = datetime.now(_CENTRAL).date()
         end_date = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)
-        return _build_events_from_rss(today, end_date)
+        # Open a short-lived session for the detail-page cache. Kept local to
+        # this scraper rather than threaded through BaseSource.fetch — Isthmus
+        # is the only scraper today that needs persistence inside fetch(), and
+        # mixing the cache writes into the orchestrator's request-scoped
+        # session would re-couple the two (which #239 just decoupled).
+        db = SessionLocal()
+        try:
+            return _build_events_from_rss(today, end_date, db=db)
+        finally:
+            db.close()
 
 
-def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
+def _build_events_from_rss(start: date, end: date, *, db: Session | None = None) -> list[RawEvent]:
     """Walk the paginated RSS feed and build RawEvents.
 
     Each <item> is one pre-expanded occurrence (recurring events emit one item
@@ -151,9 +162,19 @@ def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
     datetime; the title carries human-readable start time, optional end time,
     and venue. We trust `occ_dtstart` for the datetime and use the title for
     end_at and all-day detection.
+
+    When `db` is provided, detail-page extractions are routed through the
+    `isthmus_details` cache so warm runs only re-fetch URLs whose RSS-visible
+    fields have changed. When `db` is None (the legacy inline path used by
+    unit tests), per-event detail pages are fetched directly without caching.
     """
+    # Local import to avoid circular dependency (isthmus_cache imports helpers
+    # from this module).
+    from app.scrapers.isthmus_cache import compute_rss_signature, get_or_fetch_detail
+
     events: list[RawEvent] = []
     short_count = enriched_count = failed_count = 0
+    cache_hits = cache_misses = 0
     page = 1
     while True:
         resp = http_get_with_retry(_RSS_BASE, params={"page": page}, timeout=30)
@@ -195,25 +216,48 @@ def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
 
             end_at = _parse_clock(end_time, event_date) if end_time else None
 
-            soup = _fetch_detail_soup(link)
-            time.sleep(_FETCH_DELAY)
-            description = item.findtext("description") or None
+            rss_description = item.findtext("description") or None
+            description = rss_description
             categories: list[str] = []
             venue_address: str | None = None
-            if soup is not None:
-                categories = _extract_categories(soup)
-                venue_address = _extract_venue_address(soup)
-                if len(description or "") < _DESC_MIN_LEN:
+            short = len(description or "") < _DESC_MIN_LEN
+
+            if db is not None:
+                rss_signature = compute_rss_signature(event_name, venue_name, rss_description)
+                cached_categories, cached_address, cached_description, outcome = get_or_fetch_detail(
+                    link, rss_signature=rss_signature, rss_description=rss_description, db=db,
+                )
+                if outcome == "hit":
+                    cache_hits += 1
+                else:
+                    cache_misses += 1
+                    time.sleep(_FETCH_DELAY)  # courtesy delay only on actual network fetches
+                categories = cached_categories
+                venue_address = cached_address
+                if short:
                     short_count += 1
-                    enriched = _extract_description(soup, link)
-                    if enriched:
-                        description = enriched
+                    if cached_description:
+                        description = cached_description
                         enriched_count += 1
                     else:
                         failed_count += 1
-            elif len(description or "") < _DESC_MIN_LEN:
-                short_count += 1
-                failed_count += 1
+            else:
+                soup = _fetch_detail_soup(link)
+                time.sleep(_FETCH_DELAY)
+                if soup is not None:
+                    categories = _extract_categories(soup)
+                    venue_address = _extract_venue_address(soup)
+                    if short:
+                        short_count += 1
+                        enriched = _extract_description(soup, link)
+                        if enriched:
+                            description = enriched
+                            enriched_count += 1
+                        else:
+                            failed_count += 1
+                elif short:
+                    short_count += 1
+                    failed_count += 1
 
             events.append(RawEvent(
                 title=event_name,
@@ -237,5 +281,7 @@ def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
             "Isthmus description enrichment: %d/%d fetched successfully, %d failed",
             enriched_count, short_count, failed_count,
         )
+    if db is not None:
+        logger.info("Isthmus detail cache: %d hit, %d miss", cache_hits, cache_misses)
     logger.info("Isthmus: built %d events from RSS", len(events))
     return events

@@ -56,3 +56,19 @@ class VenueGeocode(Base):
     geocoder = Column(String, nullable=False, server_default="nominatim")
     geocoded_at = Column(DateTime(timezone=True), server_default=func.now())
     attempts = Column(Integer, nullable=False, server_default="1")
+
+
+class IsthmusDetail(Base):
+    __tablename__ = "isthmus_details"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lookup_key = Column(String, unique=True, nullable=False, index=True)
+    # Hash of RSS-visible fields (parsed name | venue_name | RSS description).
+    # When this changes for a given lookup_key, the cache is invalidated and the
+    # detail page is re-fetched. Times are intentionally excluded — they vary
+    # per occurrence for recurring events but don't change detail-page content.
+    rss_signature = Column(String, nullable=False)
+    categories = Column(ARRAY(String), nullable=False, server_default="{}")
+    venue_address = Column(String)
+    description = Column(Text)
+    fetched_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

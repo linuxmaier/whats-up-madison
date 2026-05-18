@@ -441,3 +441,167 @@ class TestCategoryMap:
         from app.categories import CATEGORIES
         for source_tag, mapped in _CATEGORY_MAP.items():
             assert mapped in CATEGORIES, f"{source_tag!r} maps to {mapped!r}, which is not a canonical category"
+
+
+class TestDetailCache:
+    """Cache-aware path of `_build_events_from_rss(..., db=...)`.
+
+    These tests pass a real Session so the cache module's persistence is
+    exercised end-to-end; only the network boundary (`_fetch_detail_soup`) is
+    mocked. The single source of truth for whether a row was reused is the
+    call count of that mock.
+    """
+
+    def _detail_soup(self, name: str = "Event Body"):
+        return BeautifulSoup(f"""
+          <html><body>
+            <div class="mp_tag_cat_1"><span>Music</span></div>
+            <span class="address">7464 Hubbard Ave., Middleton, Wisconsin 53562</span>
+            <div id="content"><p>{name} long form description body that easily exceeds the eighty-character enrichment threshold.</p></div>
+          </body></html>
+        """, "lxml")
+
+    def _rss_item(self, *, title: str, link: str, description: str = "Long-form RSS description well above 80 chars to keep enrichment off the critical path.") -> str:
+        return f"""
+          <item>
+            <title>{title}</title>
+            <link>{link}</link>
+            <description>{description}</description>
+          </item>
+        """
+
+    def _patch_pages(self, *pages_items: list[str]):
+        responses = [_rss_response(items) for items in pages_items]
+        calls = {"i": 0}
+
+        def side_effect(url, **kwargs):
+            i = calls["i"]
+            calls["i"] += 1
+            return responses[i] if i < len(responses) else _empty_rss_response()
+
+        return side_effect
+
+    def test_detail_cache_hit_skips_network(self, db):
+        from app.models import IsthmusDetail
+
+        item = self._rss_item(
+            title="Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern",
+            link="https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00",
+        )
+        soup = self._detail_soup()
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([item])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=soup) as fetch, \
+             patch("app.scrapers.isthmus.time.sleep"):
+            _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        assert fetch.call_count == 1
+        assert db.query(IsthmusDetail).count() == 1
+
+        # Second call to the same RSS payload — should be a pure cache hit.
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([item])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=soup) as fetch2, \
+             patch("app.scrapers.isthmus.time.sleep"):
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        assert fetch2.call_count == 0
+        assert len(events) == 1
+        assert events[0].categories == ["Music"]
+        assert events[0].venue_address == "7464 Hubbard Ave., Middleton, Wisconsin 53562"
+
+    def test_detail_cache_key_strips_occ_dtstart(self, db):
+        from app.models import IsthmusDetail
+
+        # Two RSS items for the same recurring event — different occurrences
+        # carry different occ_dtstart values but point at the same detail page.
+        item_a = self._rss_item(
+            title="Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern",
+            link="https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00",
+        )
+        item_b = self._rss_item(
+            title="Open Mic - May 24, 2026 10:00 PM @ Mickey's Tavern",
+            link="https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-24T22:00",
+        )
+        soup = self._detail_soup()
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([item_a, item_b])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=soup) as fetch, \
+             patch("app.scrapers.isthmus.time.sleep"):
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 30), db=db)
+        assert len(events) == 2
+        # One detail-page fetch even though there are two occurrences.
+        assert fetch.call_count == 1
+        assert db.query(IsthmusDetail).count() == 1
+        # Both occurrences inherit the cached fields.
+        assert all(e.categories == ["Music"] for e in events)
+
+    def test_detail_cache_signature_invalidates_on_title_change(self, db):
+        from app.models import IsthmusDetail
+
+        link = "https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00"
+        first = self._rss_item(
+            title="Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern",
+            link=link,
+        )
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([first])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=self._detail_soup("Open Mic")), \
+             patch("app.scrapers.isthmus.time.sleep"):
+            _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        original_sig = db.query(IsthmusDetail).one().rss_signature
+
+        # Same link but the event was renamed in RSS. Signature mismatch → refresh.
+        renamed = self._rss_item(
+            title="Renamed Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern",
+            link=link,
+        )
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([renamed])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=self._detail_soup("Renamed")) as fetch, \
+             patch("app.scrapers.isthmus.time.sleep"):
+            _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        assert fetch.call_count == 1
+        refreshed = db.query(IsthmusDetail).one()
+        assert refreshed.rss_signature != original_sig
+        # Refresh upserts, doesn't append.
+        assert db.query(IsthmusDetail).count() == 1
+
+    def test_detail_cache_signature_invalidates_on_venue_change(self, db):
+        from app.models import IsthmusDetail
+
+        link = "https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00"
+        first = self._rss_item(
+            title="Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern", link=link,
+        )
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([first])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=self._detail_soup()), \
+             patch("app.scrapers.isthmus.time.sleep"):
+            _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        original_sig = db.query(IsthmusDetail).one().rss_signature
+
+        moved = self._rss_item(
+            title="Open Mic - May 17, 2026 10:00 PM @ Different Venue", link=link,
+        )
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([moved])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=self._detail_soup()) as fetch, \
+             patch("app.scrapers.isthmus.time.sleep"):
+            _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        assert fetch.call_count == 1
+        assert db.query(IsthmusDetail).one().rss_signature != original_sig
+
+    def test_detail_cache_does_not_persist_failed_fetches(self, db):
+        from app.models import IsthmusDetail
+
+        item = self._rss_item(
+            title="Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern",
+            link="https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00",
+        )
+        # _fetch_detail_soup returns None on network/parse errors.
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([item])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
+             patch("app.scrapers.isthmus.time.sleep"):
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        assert len(events) == 1
+        # No row written — next run will retry instead of inheriting a stale empty cache.
+        assert db.query(IsthmusDetail).count() == 0
+
+        # Follow-up run must call the network again.
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_pages([item])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None) as fetch, \
+             patch("app.scrapers.isthmus.time.sleep"):
+            _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25), db=db)
+        assert fetch.call_count == 1
