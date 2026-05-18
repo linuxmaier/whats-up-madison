@@ -55,6 +55,12 @@ def _extract_description(soup: BeautifulSoup, url: str) -> str | None:
     if not content:
         logger.warning("No id='content' element at %s", url)
         return None
+    # Isthmus's hero image card (div.single.media-carousel) injects
+    # "× Expand <photographer-credit> <event-title>" into the visible text,
+    # which then prefixes every description on events with a hero image.
+    # Drop it (and any generic <figure>) before extracting paragraph text.
+    for node in content.select("div.media-carousel, figure"):
+        node.decompose()
     return clean_html_text(content.get_text()) or None
 
 
