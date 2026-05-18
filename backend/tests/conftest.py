@@ -31,5 +31,5 @@ def db(SessionFactory, engine):
     yield session
     session.close()
     with engine.connect() as conn:
-        conn.execute(text("TRUNCATE event_sources, events RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE event_sources, events, isthmus_details RESTART IDENTITY CASCADE"))
         conn.commit()
