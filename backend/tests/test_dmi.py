@@ -187,6 +187,40 @@ class TestParseEvent:
         assert ev.all_day is True
         assert ev.end_at is None
 
+    def test_description_trailing_loading_unicode_stripped(self):
+        # Real-world: Tribe Events registration widget leaves "REGISTRATION:\n\nLoading…"
+        # when JS hasn't hydrated. Strip it; preserve the descriptive copy above.
+        doc = _base_doc(description="<p>Join us!</p><h2>REGISTRATION:</h2><p>Loading…</p>")
+        ev = _parse_event(doc)
+        assert ev is not None
+        assert ev.description == "Join us!"
+
+    def test_description_trailing_loading_dots_stripped(self):
+        doc = _base_doc(description="<p>Join us!</p><h2>REGISTRATION:</h2><p>Loading...</p>")
+        ev = _parse_event(doc)
+        assert ev is not None
+        assert ev.description == "Join us!"
+
+    def test_description_trailing_please_wait_stripped(self):
+        doc = _base_doc(description="<p>Details here.</p><h2>REGISTRATION:</h2><p>Please wait…</p>")
+        ev = _parse_event(doc)
+        assert ev is not None
+        assert ev.description == "Details here."
+
+    def test_description_registration_no_sentinel_preserved(self):
+        # "REGISTRATION:" alone (no loading sentinel) is kept — we can't confirm it's broken.
+        doc = _base_doc(description="<p>Join us!</p><h2>REGISTRATION:</h2>")
+        ev = _parse_event(doc)
+        assert ev is not None
+        assert "REGISTRATION:" in (ev.description or "")
+
+    def test_description_registration_mid_content_preserved(self):
+        # "REGISTRATION:" mid-description with real content following is not touched.
+        doc = _base_doc(description="<p>Join us!</p><h2>REGISTRATION:</h2><p>Sign up at eventbrite.com/e/12345</p>")
+        ev = _parse_event(doc)
+        assert ev is not None
+        assert "eventbrite.com" in (ev.description or "")
+
     def test_missing_title_returns_none(self):
         assert _parse_event(_base_doc(title="")) is None
 

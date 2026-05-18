@@ -31,6 +31,13 @@ _METRO_CITIES: frozenset[str] = frozenset({
 })
 _MADISON_ZIP_RE = re.compile(r"\b537\d{2}\b")
 
+# Tribe Events registration widgets emit "REGISTRATION:\n\nLoading…" when JS
+# hasn't hydrated the widget server-side. Strip it when it's the trailing content.
+_TRAILING_REGISTRATION_RE = re.compile(
+    r"\s*REGISTRATION:\s*\n+\s*(?:Loading[…\.]{0,3}|Please\s+wait[…\.]{0,3})\s*$",
+    re.IGNORECASE,
+)
+
 
 class DMISource(BaseSource):
     name = "DMI"
@@ -154,7 +161,9 @@ def _parse_event(doc: dict) -> RawEvent | None:
         if end_at is not None and end_at.date() == start_at.date():
             end_at = None
 
-    description = clean_html_text(doc.get("description") or "") or None
+    raw_desc = clean_html_text(doc.get("description") or "")
+    raw_desc = _TRAILING_REGISTRATION_RE.sub("", raw_desc).strip()
+    description = raw_desc or None
 
     # Same entity-decoding issue as the title — the DMI feed ships venue names
     # like "RDG Planning &#038; Design" raw. Decode so the card and the canonical
