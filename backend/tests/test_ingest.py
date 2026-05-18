@@ -371,6 +371,20 @@ def test_canonical_venue_address_corrected_on_subsequent_run(db):
     assert event.venue_address == "701 E Washington Ave, Madison, WI 53703"
 
 
+def test_delta_beer_lab_fitchburg_address_corrected_on_insert(db):
+    # Our Lives ships city="Madison" for Delta Beer Lab; the canonical registry
+    # corrects it to Fitchburg (#229).
+    raw = _raw(
+        title="Pairs Jigsaw Puzzle Contest",
+        venue_name="Delta Beer Lab",
+        venue_address="167 E Badger Rd, Madison, WI 53713",
+        source_name="Our Lives",
+    )
+    ingest_events("Our Lives", [raw], db)
+    event = db.query(Event).one()
+    assert event.venue_address == "167 E Badger Rd, Fitchburg, WI 53713"
+
+
 def test_non_canonical_venue_address_is_left_untouched(db):
     raw = _raw(
         venue_name="Some Random Bar",
