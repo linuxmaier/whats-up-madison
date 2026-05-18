@@ -49,6 +49,18 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "orpheum theatre": CanonicalVenue(
         43.0751848, -89.3887320, "216 State St, Madison, WI 53703"
     ),
+    # Visit Madison ships "The Orpheum Theater" (with leading "The") while
+    # Ticketmaster ships "Orpheum Theater". These aliases normalize the "The"
+    # prefix form so both sources produce the same venue_name before hashing
+    # and fuzzy dedup (#223).
+    "the orpheum theater": CanonicalVenue(
+        43.0751848, -89.3887320, "216 State St, Madison, WI 53703",
+        canonical_name="Orpheum Theater",
+    ),
+    "the orpheum theatre": CanonicalVenue(
+        43.0751848, -89.3887320, "216 State St, Madison, WI 53703",
+        canonical_name="Orpheum Theater",
+    ),
     "barrymore theatre": CanonicalVenue(
         43.0930640, -89.3522665, "2090 Atwood Ave, Madison, WI 53704"
     ),
