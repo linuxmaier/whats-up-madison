@@ -442,6 +442,60 @@ def test_city_suffix_venue_alias_normalizes_for_dedup(db):
 
 
 # ---------------------------------------------------------------------------
+# 10b. "The" prefix venue alias for Orpheum (#223): Visit Madison ships
+#      "The Orpheum Theater" while Ticketmaster ships "Orpheum Theater".
+#      The alias in canonical_venues normalizes the "The" form before hashing
+#      so fuzzy dedup can find a venue match and merge the two events.
+# ---------------------------------------------------------------------------
+
+def test_orpheum_the_prefix_venue_alias_merges(db):
+    vm_title = "Joe Jackson"
+    tm_title = "Joe Jackson + Band - Hope and Fury Tour 2026"
+    start = datetime(2026, 5, 22, 20, 0, 0, tzinfo=timezone.utc)
+
+    ingest_events(
+        "Visit Madison",
+        [_raw(title=vm_title, venue_name="The Orpheum Theater", start_at=start)],
+        db,
+    )
+    ingest_events(
+        "Ticketmaster",
+        [_raw(
+            title=tm_title,
+            venue_name="Orpheum Theater",
+            start_at=start,
+            source_url="https://www.ticketmaster.com/event/xyz",
+        )],
+        db,
+    )
+
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+    # Reverse direction: Ticketmaster first, Visit Madison second — also merges.
+    db.query(EventSource).delete()
+    db.query(Event).delete()
+    db.commit()
+    ingest_events(
+        "Ticketmaster",
+        [_raw(title=tm_title, venue_name="Orpheum Theater", start_at=start)],
+        db,
+    )
+    ingest_events(
+        "Visit Madison",
+        [_raw(
+            title=vm_title,
+            venue_name="The Orpheum Theater",
+            start_at=start,
+            source_url="https://www.visitmadison.com/event/joe-jackson/74824/",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+
+# ---------------------------------------------------------------------------
 # 9. Source-priority overwrite (#114): higher-trust source overwrites fields
 #    set by a lower-trust source; lower-trust source cannot overwrite back.
 # ---------------------------------------------------------------------------
