@@ -78,15 +78,15 @@ app.add_middleware(
 app.include_router(events.router)
 
 SCRAPERS = [
-    IsthmusSource(),
-    VisitMadisonSource(),
     HighNoonSource(),
-    OurLivesSource(),
-    TicketmasterSource(),
     AtwoodMusicHallSource(),
     MajesticTheatreSource(),
+    TicketmasterSource(),
+    OurLivesSource(),
     DMISource(),
     WisconsinChamberOrchestraSource(),
+    IsthmusSource(),
+    VisitMadisonSource(),
     CityOfMadisonSource(),
 ]
 

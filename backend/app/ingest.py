@@ -116,6 +116,14 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
                 if event.end_at != raw.end_at:
                     event.end_at = raw.end_at
                     changed = True
+            # Propagate description=None on self-reruns at the top of the priority
+            # stack. If this source previously stored a description but now emits
+            # None (e.g. a boilerplate filter added after initial ingest), clear
+            # the stale value so lower-priority sources can fill via null-fill
+            # semantics on the next pass. Mirrors the end_at special case above.
+            if is_self_rerun_at_top and raw.description is None and event.description is not None:
+                event.description = None
+                changed = True
             if raw.categories:
                 existing = list(event.categories or [])
                 merged = existing + [c for c in raw.categories if c not in existing]

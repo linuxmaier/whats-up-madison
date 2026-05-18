@@ -658,3 +658,54 @@ def test_lower_priority_source_does_not_overwrite_start_at(db):
 
     event = db.query(Event).one()
     assert event.start_at == datetime(2026, 6, 15, 23, 0, 0, tzinfo=timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# 10. Self-rerun description clearing (#212): a top-priority source that now
+#     emits description=None must clear its own stale description so lower-
+#     priority sources can fill via null-fill semantics.
+# ---------------------------------------------------------------------------
+
+def test_self_rerun_at_top_clears_stale_description_when_none(db):
+    # Regression for #212. Simulates Ticketmaster being ingested with boilerplate
+    # before _choose_description existed, then re-scraped after the filter was added.
+    boilerplate = (
+        "Doors at 7:00 pm | Show at 8:00 pm CASHLESS VENUE - The Sylvee services "
+        "all credit and debit payments only. No cash accepted."
+    )
+    raw_tm = _raw(source_name="Ticketmaster", description=boilerplate)
+    ingest_events("Ticketmaster", [raw_tm], db)
+
+    event = db.query(Event).one()
+    assert event.description == boilerplate
+
+    # TM re-scrapes after filter added — now emits description=None.
+    raw_tm_rerun = _raw(source_name="Ticketmaster", description=None)
+    ingest_events("Ticketmaster", [raw_tm_rerun], db)
+
+    db.refresh(event)
+    assert event.description is None
+
+
+def test_lower_priority_fills_description_after_top_source_clears_it(db):
+    # Regression for #212 (multi-source path). After TM clears its stale boilerplate
+    # description to None, Visit Madison (lower priority) must be able to fill it
+    # via null-fill semantics — demonstrating the full fix end-to-end.
+    boilerplate = (
+        "Doors at 7:00 pm | Show at 8:00 pm CASHLESS VENUE - The Sylvee services "
+        "all credit and debit payments only. No cash accepted."
+    )
+    raw_tm = _raw(source_name="Ticketmaster", description=boilerplate)
+    ingest_events("Ticketmaster", [raw_tm], db)
+
+    # TM re-scrapes with no description (boilerplate filtered).
+    raw_tm_rerun = _raw(source_name="Ticketmaster", description=None)
+    ingest_events("Ticketmaster", [raw_tm_rerun], db)
+
+    # Visit Madison fills the now-null description.
+    vm_description = "Blending the punchy riffs of J-rock, the playfulness of indie rock."
+    raw_vm = _raw(source_name="Visit Madison", description=vm_description)
+    ingest_events("Visit Madison", [raw_vm], db)
+
+    event = db.query(Event).one()
+    assert event.description == vm_description
