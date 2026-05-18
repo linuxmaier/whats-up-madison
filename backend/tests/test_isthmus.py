@@ -4,7 +4,13 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from app.scrapers.isthmus import _CATEGORY_MAP, _extract_categories, _extract_venue_address, _parse_ical
+from app.scrapers.isthmus import (
+    _CATEGORY_MAP,
+    _extract_categories,
+    _extract_description,
+    _extract_venue_address,
+    _parse_ical,
+)
 
 
 def _soup(html: str) -> BeautifulSoup:
@@ -71,6 +77,64 @@ class TestExtractCategories:
             </div>
         """
         assert _extract_categories(_soup(html)) == []
+
+
+class TestExtractDescription:
+    def test_strips_media_carousel_image_caption(self):
+        # Mirrors the real Jim Erickson page (issue #211): the hero image
+        # card is a div.single.media-carousel containing the "× Expand",
+        # photographer credit, and image alt text. Without stripping, all of
+        # that text prefixes the actual blurb in p.lead.
+        html = """
+            <html><body>
+              <div id="content">
+                <div>
+                  <div class="single media-carousel">× Expand Laurie Lang Jim Erickson</div>
+                  <p class="lead">Jazz, 5:30 pm Saturdays. Free.</p>
+                </div>
+              </div>
+            </body></html>
+        """
+        result = _extract_description(_soup(html), "https://example.test/jim")
+        assert result == "Jazz, 5:30 pm Saturdays. Free."
+        assert "× Expand" not in result
+        assert "Laurie Lang" not in result
+
+    def test_preserves_full_text_when_no_carousel(self):
+        # Longer-form events (e.g. Kids on the Prairie) have no media-carousel
+        # and several paragraphs of body copy. The strip must be a no-op there.
+        html = """
+            <html><body>
+              <div id="content">
+                <div>
+                  <p class="lead">Lead paragraph with the intro blurb.</p>
+                  <p>Second paragraph with more detail about the event.</p>
+                  <p>Third paragraph with logistics.</p>
+                </div>
+              </div>
+            </body></html>
+        """
+        result = _extract_description(_soup(html), "https://example.test/long")
+        assert "Lead paragraph with the intro blurb." in result
+        assert "Second paragraph with more detail about the event." in result
+        assert "Third paragraph with logistics." in result
+
+    def test_strips_generic_figure_node(self):
+        # Forward safety: if Isthmus ever swaps the media-carousel div for a
+        # standard <figure> layout, the strip should still drop it.
+        html = """
+            <html><body>
+              <div id="content">
+                <div>
+                  <figure><img src="x.jpg" alt="Show photo"><figcaption>Photo: Alice</figcaption></figure>
+                  <p>Actual description body.</p>
+                </div>
+              </div>
+            </body></html>
+        """
+        result = _extract_description(_soup(html), "https://example.test/fig")
+        assert result == "Actual description body."
+        assert "Photo: Alice" not in result
 
 
 class TestExtractVenueAddress:
