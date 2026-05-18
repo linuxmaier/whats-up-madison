@@ -1,22 +1,20 @@
 import logging
+import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
-import recurring_ical_events
 from bs4 import BeautifulSoup
-from icalendar import Calendar
 
 from app.scrapers.base import BaseSource, RawEvent, clean_html_text, http_get_with_retry
 
 logger = logging.getLogger(__name__)
 
-_ICAL_URL = "https://isthmus.com/search/event/calendar-of-events/calendar.ics"
 _RSS_BASE = "https://isthmus.com/search/event/calendar-of-events/index.rss"
 _CENTRAL = ZoneInfo("America/Chicago")
-_WINDOW_DAYS = 30  # matches the iCal feed's effective range
+_WINDOW_DAYS = 30
 _DESC_MIN_LEN = 80
 _FETCH_DELAY = 0.5  # courtesy delay between detail-page fetches; Isthmus has no published rate limit
 
@@ -39,6 +37,20 @@ _CATEGORY_MAP: dict[str, str] = {
     "Public Meetings": "Civic & Politics",
     "Fundraisers": "Volunteer & Causes",
 }
+
+# RSS title format: "Event Name - Month DD, YYYY [H:MM AM/PM [- H:MM AM/PM]] [@ Venue]"
+# Observed shapes:
+#   "Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern"
+#   "Dave Scott Quintet - May 17, 2026 7:00 PM - 10:00 PM @ North Street Cabaret"
+#   "RSVP for The Record Club - May 18, 2026 @ UW Memorial Library"  (no time = all-day)
+#   "Lupus Support Group for Women of Color - May 18, 2026 6:00 PM"  (no venue)
+_RSS_TITLE_RE = re.compile(
+    r"^(?P<name>.+?) - "
+    r"[A-Z][a-z]+ \d{1,2}, \d{4}"
+    r"(?:\s+(?P<start>\d{1,2}:\d{2}\s*[AP]M)"
+    r"(?:\s*-\s*(?P<end>\d{1,2}:\d{2}\s*[AP]M))?)?"
+    r"(?:\s*@\s*(?P<venue>.+))?$"
+)
 
 
 def _fetch_detail_soup(url: str) -> BeautifulSoup | None:
@@ -90,9 +102,37 @@ def _extract_venue_address(soup: BeautifulSoup) -> str | None:
     return " ".join(addr_span.get_text().split()) or None
 
 
+def _parse_rss_title(title: str) -> tuple[str, str | None, str | None, str | None]:
+    """Split RSS title into (event_name, start_time, end_time, venue).
+
+    Falls back to (raw_title, None, None, None) when the regex doesn't match —
+    keeping the item is better than dropping it; caller can still use
+    occ_dtstart for the start datetime.
+    """
+    m = _RSS_TITLE_RE.match(title.strip())
+    if not m:
+        return (title.strip(), None, None, None)
+    venue = m.group("venue")
+    return (
+        m.group("name").strip(),
+        m.group("start"),
+        m.group("end"),
+        venue.strip() if venue else None,
+    )
+
+
+def _parse_clock(text: str, on: date) -> datetime:
+    t = datetime.strptime(text.strip().upper().replace(" ", ""), "%I:%M%p").time()
+    return datetime.combine(on, t).replace(tzinfo=_CENTRAL)
+
+
 class IsthmusSource(BaseSource):
     name = "Isthmus"
-    scraper_type = "ical"
+    # The RSS feed is now the only data source. The iCal feed was dropped in
+    # issue #231 — it covered only ~14% of what RSS exposes for the same
+    # window and was the source of #210 (zero-duration end_at) and #228
+    # (stale rescheduled events).
+    scraper_type = "rss"
 
     def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         # Use Central time, not the container's clock — backend runs in UTC, so
@@ -100,89 +140,20 @@ class IsthmusSource(BaseSource):
         # today's events from the scrape window.
         today = datetime.now(_CENTRAL).date()
         end_date = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)
-
-        ical_resp = http_get_with_retry(_ICAL_URL, timeout=30)
-        if not ical_resp.content.strip():
-            logger.warning("Isthmus: iCal feed returned empty response; falling back to RSS")
-            return _build_events_from_rss(today, end_date)
-
-        url_map, title_date_map = _build_url_map(today, end_date)
-        return _parse_ical(today, end_date, url_map, title_date_map, ical_content=ical_resp.content)
-
-
-def _parse_rss_title(title: str) -> tuple[str, str]:
-    """Return (event_name_lower, venue_lower) from an RSS item title.
-
-    RSS format: 'Event Name - Date [time] [@ Venue]'
-    """
-    idx = title.find(" - ")
-    if idx == -1:
-        return title.lower().strip(), ""
-    event_name = title[:idx].lower().strip()
-    suffix = title[idx + 3:]
-    at_idx = suffix.rfind(" @ ")
-    venue = suffix[at_idx + 3:].lower().strip() if at_idx != -1 else ""
-    return event_name, venue
-
-
-def _build_url_map(
-    start: date, end: date
-) -> tuple[dict[tuple[str, str, str], str], dict[tuple[str, str], str]]:
-    """Paginate the RSS feed and return two lookup maps.
-
-    url_map:        (title, date, venue) → url  (venue-precise)
-    title_date_map: (title, date)        → url  (first match per title+date)
-    """
-    url_map: dict[tuple[str, str, str], str] = {}
-    title_date_map: dict[tuple[str, str], str] = {}
-    page = 1
-    while True:
-        resp = http_get_with_retry(_RSS_BASE, params={"page": page}, timeout=30)
-        if not resp.content.strip():
-            break
-        root = ET.fromstring(resp.content)
-        items = root.findall(".//item")
-        if not items:
-            break
-
-        all_beyond_window = True
-        for item in items:
-            link = item.findtext("link") or ""
-            title_raw = item.findtext("title") or ""
-            qs = parse_qs(urlparse(link).query)
-            occ = qs.get("occ_dtstart", [None])[0]
-            if not occ:
-                continue
-
-            event_date = date.fromisoformat(occ[:10])
-            if event_date <= end:
-                all_beyond_window = False
-            if start <= event_date <= end:
-                date_str = event_date.isoformat()
-                event_name, venue = _parse_rss_title(title_raw)
-                if venue:
-                    url_map[(event_name, date_str, venue)] = link
-                title_date_map.setdefault((event_name, date_str), link)
-
-        if all_beyond_window:
-            break
-        page += 1
-
-    return url_map, title_date_map
-
-
-def _to_aware_datetime(dt: date | datetime) -> datetime:
-    if isinstance(dt, datetime):
-        return dt if dt.tzinfo is not None else dt.replace(tzinfo=_CENTRAL)
-    return datetime(dt.year, dt.month, dt.day, tzinfo=_CENTRAL)
+        return _build_events_from_rss(today, end_date)
 
 
 def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
-    """Build RawEvents directly from RSS items when the iCal feed is unavailable.
+    """Walk the paginated RSS feed and build RawEvents.
 
-    The RSS occ_dtstart query param includes the local time (e.g. 2026-05-12T19:30)
-    so we can produce properly-timed events without the iCal feed."""
+    Each <item> is one pre-expanded occurrence (recurring events emit one item
+    per date). The link/guid carries `occ_dtstart` with the local start
+    datetime; the title carries human-readable start time, optional end time,
+    and venue. We trust `occ_dtstart` for the datetime and use the title for
+    end_at and all-day detection.
+    """
     events: list[RawEvent] = []
+    short_count = enriched_count = failed_count = 0
     page = 1
     while True:
         resp = http_get_with_retry(_RSS_BASE, params={"page": page}, timeout=30)
@@ -208,41 +179,47 @@ def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
             if not (start <= event_date <= end):
                 continue
 
-            # RSS title format: "Event Name - Date [time] [@ Venue]"
-            dash_idx = title_raw.find(" - ")
-            if dash_idx == -1:
-                event_name = title_raw.strip()
-                venue_name = None
-            else:
-                event_name = title_raw[:dash_idx].strip()
-                suffix = title_raw[dash_idx + 3:]
-                at_idx = suffix.rfind(" @ ")
-                venue_name = suffix[at_idx + 3:].strip() if at_idx != -1 else None
-
+            event_name, start_time, end_time, venue_name = _parse_rss_title(title_raw)
             if not event_name:
                 continue
 
-            if "T" in occ:
-                try:
-                    start_at = datetime.fromisoformat(occ).replace(tzinfo=_CENTRAL)
-                    all_day = False
-                except ValueError:
-                    start_at = datetime(event_date.year, event_date.month, event_date.day, tzinfo=_CENTRAL)
-                    all_day = True
+            # The RSS title not carrying a time is the strongest all-day signal:
+            # occ_dtstart=...T00:00 alone is ambiguous (a real midnight event
+            # would look the same). Trust the human-readable title.
+            if start_time:
+                start_at = _parse_clock(start_time, event_date)
+                all_day = False
             else:
                 start_at = datetime(event_date.year, event_date.month, event_date.day, tzinfo=_CENTRAL)
                 all_day = True
 
+            end_at = _parse_clock(end_time, event_date) if end_time else None
+
             soup = _fetch_detail_soup(link)
             time.sleep(_FETCH_DELAY)
-            description = _extract_description(soup, link) if soup is not None else None
-            categories = _extract_categories(soup) if soup is not None else []
-            venue_address = _extract_venue_address(soup) if soup is not None else None
+            description = item.findtext("description") or None
+            categories: list[str] = []
+            venue_address: str | None = None
+            if soup is not None:
+                categories = _extract_categories(soup)
+                venue_address = _extract_venue_address(soup)
+                if len(description or "") < _DESC_MIN_LEN:
+                    short_count += 1
+                    enriched = _extract_description(soup, link)
+                    if enriched:
+                        description = enriched
+                        enriched_count += 1
+                    else:
+                        failed_count += 1
+            elif len(description or "") < _DESC_MIN_LEN:
+                short_count += 1
+                failed_count += 1
 
             events.append(RawEvent(
                 title=event_name,
                 start_at=start_at,
-                venue_name=venue_name or None,
+                end_at=end_at,
+                venue_name=venue_name,
                 venue_address=venue_address,
                 description=description,
                 source_name="Isthmus",
@@ -255,88 +232,10 @@ def _build_events_from_rss(start: date, end: date) -> list[RawEvent]:
             break
         page += 1
 
-    logger.info("Isthmus RSS fallback: built %d events", len(events))
-    return events
-
-
-def _parse_ical(
-    start: date,
-    end: date,
-    url_map: dict[tuple[str, str, str], str],
-    title_date_map: dict[tuple[str, str], str],
-    ical_content: bytes | None = None,
-) -> list[RawEvent]:
-    if ical_content is None:
-        ical_content = http_get_with_retry(_ICAL_URL, timeout=30).content
-    cal = Calendar.from_ical(ical_content)
-
-    events = []
-    short_count = enriched_count = failed_count = 0
-    for comp in recurring_ical_events.of(cal).between(start, end):
-        title = str(comp.get("SUMMARY", "")).strip()
-        if not title:
-            continue
-
-        start_at = _to_aware_datetime(comp.get("DTSTART").dt)
-        dtend = comp.get("DTEND")
-        end_at = _to_aware_datetime(dtend.dt) if dtend else None
-        if end_at is not None and end_at == start_at:
-            end_at = None
-
-        raw_location = comp.get("LOCATION")
-        venue_name = str(raw_location).strip() or None if raw_location else None
-
-        raw_desc = comp.get("DESCRIPTION")
-        description = str(raw_desc).strip() or None if raw_desc else None
-
-        local_date = start_at.astimezone(_CENTRAL).date().isoformat()
-        title_lower = title.lower().strip()
-        venue_lower = (venue_name or "").lower().strip()
-
-        source_url = (
-            url_map.get((title_lower, local_date, venue_lower))
-            or title_date_map.get((title_lower, local_date))
-        )
-        if not source_url:
-            continue
-
-        # Always fetch the detail page so we can extract Isthmus's own category
-        # tags (the iCal/RSS feeds carry none); use the same fetch to enrich
-        # short iCal descriptions.
-        venue_address: str | None = None
-        categories: list[str] = []
-        soup = _fetch_detail_soup(source_url)
-        time.sleep(_FETCH_DELAY)
-        if soup is not None:
-            categories = _extract_categories(soup)
-            venue_address = _extract_venue_address(soup)
-            if len(description or "") < _DESC_MIN_LEN:
-                short_count += 1
-                enriched = _extract_description(soup, source_url)
-                if enriched:
-                    description = enriched
-                    enriched_count += 1
-                else:
-                    failed_count += 1
-        elif len(description or "") < _DESC_MIN_LEN:
-            short_count += 1
-            failed_count += 1
-
-        events.append(RawEvent(
-            title=title,
-            start_at=start_at,
-            end_at=end_at,
-            venue_name=venue_name,
-            venue_address=venue_address,
-            description=description,
-            source_name="Isthmus",
-            source_url=source_url,
-            categories=categories,
-        ))
-
     if short_count:
         logger.info(
-            "Description enrichment: %d/%d fetched successfully, %d failed",
+            "Isthmus description enrichment: %d/%d fetched successfully, %d failed",
             enriched_count, short_count, failed_count,
         )
+    logger.info("Isthmus: built %d events from RSS", len(events))
     return events

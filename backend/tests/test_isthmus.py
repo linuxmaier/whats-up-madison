@@ -1,16 +1,21 @@
-"""Unit tests for isthmus.py detail-page extraction helpers."""
-from datetime import date
-from unittest.mock import patch
+"""Unit tests for isthmus.py: detail-page extraction helpers + RSS feed parser."""
+from datetime import date, datetime
+from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 
 from app.scrapers.isthmus import (
     _CATEGORY_MAP,
+    _build_events_from_rss,
     _extract_categories,
     _extract_description,
     _extract_venue_address,
-    _parse_ical,
+    _parse_clock,
+    _parse_rss_title,
 )
+
+_CENTRAL = ZoneInfo("America/Chicago")
 
 
 def _soup(html: str) -> BeautifulSoup:
@@ -161,95 +166,273 @@ class TestExtractVenueAddress:
         assert _extract_venue_address(_soup(html)) == "123 Main St. , Madison , Wisconsin 53703"
 
 
-_MINIMAL_SOUP = BeautifulSoup("<html><body></body></html>", "lxml")
+class TestParseRssTitle:
+    def test_title_with_start_only(self):
+        # Most common shape: timed event with single time.
+        name, start, end, venue = _parse_rss_title(
+            "Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern"
+        )
+        assert name == "Open Mic"
+        assert start == "10:00 PM"
+        assert end is None
+        assert venue == "Mickey's Tavern"
 
-# Shared URL / date values for _parse_ical tests.
-# between() needs start < end to include the event date (same start==end returns nothing).
-_TEST_START = date(2026, 5, 15)
-_TEST_END = date(2026, 5, 17)
-_TEST_URL = "https://isthmus.com/events/test-event/?occ_dtstart=2026-05-16T19:00"
-_TEST_URL_MAP: dict = {("test event", "2026-05-16", ""): _TEST_URL}
-_TEST_TITLE_DATE_MAP: dict = {("test event", "2026-05-16"): _TEST_URL}
+    def test_title_with_start_and_end(self):
+        # Regression for issue #210: when iCal had no DTEND we wrote
+        # end_at == start_at. RSS shows the explicit end time when there is
+        # one; the parser must extract it.
+        name, start, end, venue = _parse_rss_title(
+            "American Red Cross Blood Drive - May 18, 2026 11:30 AM - 4:30 PM @ Garver Feed Mill"
+        )
+        assert name == "American Red Cross Blood Drive"
+        assert start == "11:30 AM"
+        assert end == "4:30 PM"
+        assert venue == "Garver Feed Mill"
 
-_ICAL_NO_DTEND = b"""BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-DTSTART;TZID=America/Chicago:20260516T190000
-SUMMARY:Test Event
-END:VEVENT
-END:VCALENDAR"""
+    def test_title_all_day_no_time(self):
+        # "RSVP for The Record Club" — no time in title means all-day.
+        name, start, end, venue = _parse_rss_title(
+            "RSVP for The Record Club - May 18, 2026 @ UW Memorial Library"
+        )
+        assert name == "RSVP for The Record Club"
+        assert start is None
+        assert end is None
+        assert venue == "UW Memorial Library"
 
-_ICAL_WITH_DTEND = b"""BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-DTSTART;TZID=America/Chicago:20260516T190000
-DTEND;TZID=America/Chicago:20260516T210000
-SUMMARY:Test Event
-END:VEVENT
-END:VCALENDAR"""
+    def test_title_no_venue(self):
+        # Some items omit the @ Venue clause.
+        name, start, end, venue = _parse_rss_title(
+            "Lupus Support Group for Women of Color - May 18, 2026 6:00 PM"
+        )
+        assert name == "Lupus Support Group for Women of Color"
+        assert start == "6:00 PM"
+        assert end is None
+        assert venue is None
 
-_SOUP_WITH_ADDRESS = BeautifulSoup("""
-<html><body>
-  <span class="address">
-    <span itemprop="address" itemscope="" itemtype="https://schema.org/PostalAddress">
-      <span itemprop="streetAddress">1326 MacArthur Road</span>,
-      <span itemprop="addressLocality">Madison</span>,
-      <span itemprop="addressRegion">Wisconsin</span>
-      <span itemprop="postalCode">53714</span>
-    </span>
-  </span>
-</body></html>
-""", "lxml")
+    def test_title_venue_contains_comma(self):
+        # Venues with comma-separated qualifiers (city, state, etc).
+        name, start, end, venue = _parse_rss_title(
+            "Sports for Active Seniors Hiking - May 18, 2026 10:00 AM @ Lake Kegonsa State Park, Stoughton"
+        )
+        assert venue == "Lake Kegonsa State Park, Stoughton"
+
+    def test_title_unparseable_falls_back_to_raw(self):
+        # Don't drop events the regex can't handle — keep the title intact and
+        # let the caller fall back to occ_dtstart for the start datetime.
+        name, start, end, venue = _parse_rss_title("Some unparseable thing without date")
+        assert name == "Some unparseable thing without date"
+        assert (start, end, venue) == (None, None, None)
 
 
-class TestParseIcal:
-    def test_no_dtend_yields_null_end_at(self):
-        # recurring_ical_events fills DTEND=DTSTART when the feed has no DTEND;
-        # _parse_ical must treat that zero-duration result as end_at=None.
-        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=_MINIMAL_SOUP), \
+class TestParseClock:
+    def test_combines_time_with_date_in_central(self):
+        dt = _parse_clock("7:30 PM", date(2026, 5, 18))
+        assert dt == datetime(2026, 5, 18, 19, 30, tzinfo=_CENTRAL)
+
+    def test_handles_morning(self):
+        dt = _parse_clock("9:00 AM", date(2026, 5, 18))
+        assert dt == datetime(2026, 5, 18, 9, 0, tzinfo=_CENTRAL)
+
+
+def _rss_response(items: list[str]) -> MagicMock:
+    """Build a MagicMock response shaped like httpx.Response for one RSS page."""
+    body = "<?xml version='1.0'?><rss><channel>" + "".join(items) + "</channel></rss>"
+    resp = MagicMock()
+    resp.content = body.encode()
+    return resp
+
+
+def _empty_rss_response() -> MagicMock:
+    return _rss_response([])
+
+
+class TestBuildEventsFromRss:
+    def _patch_http(self, page_responses: list[MagicMock]):
+        """Return a side_effect function that returns each page's response in order."""
+        calls = {"i": 0}
+
+        def side_effect(url, **kwargs):
+            i = calls["i"]
+            calls["i"] += 1
+            if i < len(page_responses):
+                return page_responses[i]
+            return _empty_rss_response()
+
+        return side_effect
+
+    def test_timed_event_parses_start_and_end(self):
+        item = """
+          <item>
+            <title>American Red Cross Blood Drive - May 18, 2026 11:30 AM - 4:30 PM @ Garver Feed Mill</title>
+            <link>https://isthmus.com/events/red-cross/?occ_dtstart=2026-05-18T11:30</link>
+            <description>Donate blood at Garver Feed Mill.</description>
+          </item>
+        """
+        page1 = _rss_response([item])
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_http([page1])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
              patch("time.sleep"):
-            events = _parse_ical(
-                _TEST_START, _TEST_END,
-                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
-                ical_content=_ICAL_NO_DTEND,
-            )
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25))
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.title == "American Red Cross Blood Drive"
+        assert ev.start_at == datetime(2026, 5, 18, 11, 30, tzinfo=_CENTRAL)
+        assert ev.end_at == datetime(2026, 5, 18, 16, 30, tzinfo=_CENTRAL)
+        assert ev.end_at != ev.start_at  # regression for #210
+        assert ev.venue_name == "Garver Feed Mill"
+        assert ev.all_day is False
+        assert ev.source_url.endswith("?occ_dtstart=2026-05-18T11:30")
+
+    def test_timed_event_with_start_only_has_null_end(self):
+        item = """
+          <item>
+            <title>Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern</title>
+            <link>https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00</link>
+            <description>Free.</description>
+          </item>
+        """
+        page1 = _rss_response([item])
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_http([page1])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
+             patch("time.sleep"):
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25))
         assert len(events) == 1
         assert events[0].end_at is None
+        assert events[0].all_day is False
 
-    def test_explicit_dtend_preserved(self):
-        # When an event has a real end time, it must survive the fix.
-        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=_MINIMAL_SOUP), \
+    def test_no_time_in_title_marks_all_day(self):
+        # Title has no time → all-day, even though occ_dtstart=...T00:00 is
+        # ambiguous (could be a real midnight event in principle).
+        item = """
+          <item>
+            <title>RSVP for The Record Club - May 18, 2026 @ UW Memorial Library</title>
+            <link>https://isthmus.com/events/record-club/?occ_dtstart=2026-05-18T00:00</link>
+            <description>Book club for albums.</description>
+          </item>
+        """
+        page1 = _rss_response([item])
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_http([page1])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
              patch("time.sleep"):
-            events = _parse_ical(
-                _TEST_START, _TEST_END,
-                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
-                ical_content=_ICAL_WITH_DTEND,
-            )
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25))
         assert len(events) == 1
-        assert events[0].end_at is not None
-        assert events[0].end_at != events[0].start_at
+        ev = events[0]
+        assert ev.all_day is True
+        assert ev.start_at == datetime(2026, 5, 18, 0, 0, tzinfo=_CENTRAL)
+        assert ev.venue_name == "UW Memorial Library"
 
-    def test_venue_address_extracted_from_detail_page(self):
-        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=_SOUP_WITH_ADDRESS), \
-             patch("time.sleep"):
-            events = _parse_ical(
-                _TEST_START, _TEST_END,
-                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
-                ical_content=_ICAL_NO_DTEND,
-            )
-        assert len(events) == 1
-        assert events[0].venue_address == "1326 MacArthur Road, Madison, Wisconsin 53714"
+    def test_pagination_stops_when_all_items_past_window(self):
+        # Page 1 has an in-window item, page 2 has only out-of-window items
+        # (after the end date) → walker exits without fetching page 3.
+        in_window = """
+          <item>
+            <title>Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern</title>
+            <link>https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00</link>
+            <description>Free.</description>
+          </item>
+        """
+        past_window = """
+          <item>
+            <title>Future Show - June 30, 2026 7:00 PM @ Future Venue</title>
+            <link>https://isthmus.com/events/future/?occ_dtstart=2026-06-30T19:00</link>
+            <description>Out of window.</description>
+          </item>
+        """
+        page1 = _rss_response([in_window])
+        page2 = _rss_response([past_window])
+        page3 = _rss_response([])  # should not be reached
+        responses = [page1, page2, page3]
+        calls = {"i": 0}
 
-    def test_venue_address_null_when_detail_page_unavailable(self):
-        with patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
+        def side_effect(url, **kwargs):
+            i = calls["i"]
+            calls["i"] += 1
+            return responses[i] if i < len(responses) else _empty_rss_response()
+
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=side_effect) as http, \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
              patch("time.sleep"):
-            events = _parse_ical(
-                _TEST_START, _TEST_END,
-                _TEST_URL_MAP, _TEST_TITLE_DATE_MAP,
-                ical_content=_ICAL_NO_DTEND,
-            )
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25))
         assert len(events) == 1
-        assert events[0].venue_address is None
+        # Page 1 (in-window) and page 2 (decides to stop) fetched; page 3 skipped.
+        assert http.call_count == 2
+
+    def test_pagination_continues_until_window_passes(self):
+        # Page 1 has an in-window item, page 2 has another in-window item, page
+        # 3 has only past-window items → walker fetches all three, then stops.
+        in_window_1 = """
+          <item>
+            <title>Open Mic - May 17, 2026 10:00 PM @ Mickey's Tavern</title>
+            <link>https://isthmus.com/events/open-mic/?occ_dtstart=2026-05-17T22:00</link>
+          </item>
+        """
+        in_window_2 = """
+          <item>
+            <title>Other Show - May 18, 2026 8:00 PM @ Some Venue</title>
+            <link>https://isthmus.com/events/other/?occ_dtstart=2026-05-18T20:00</link>
+          </item>
+        """
+        past_window = """
+          <item>
+            <title>Future Show - June 30, 2026 7:00 PM @ Future Venue</title>
+            <link>https://isthmus.com/events/future/?occ_dtstart=2026-06-30T19:00</link>
+          </item>
+        """
+        responses = [_rss_response([in_window_1]), _rss_response([in_window_2]), _rss_response([past_window])]
+        calls = {"i": 0}
+
+        def side_effect(url, **kwargs):
+            i = calls["i"]
+            calls["i"] += 1
+            return responses[i] if i < len(responses) else _empty_rss_response()
+
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=side_effect) as http, \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
+             patch("time.sleep"):
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25))
+        assert len(events) == 2
+        assert http.call_count == 3
+
+    def test_detail_page_categories_and_address_merge_in(self):
+        item = """
+          <item>
+            <title>Jim Erickson - May 17, 2026 5:30 PM @ Louisianne's, Etc.</title>
+            <link>https://isthmus.com/events/jim/?occ_dtstart=2026-05-17T17:30</link>
+            <description>Jazz.</description>
+          </item>
+        """
+        detail = BeautifulSoup("""
+          <html><body>
+            <div class="mp_tag_cat_1"><span>Music</span></div>
+            <span class="address">7464 Hubbard Ave., Middleton, Wisconsin 53562</span>
+            <div id="content"><p>Full description body that is more than eighty characters long for the enrichment trigger.</p></div>
+          </body></html>
+        """, "lxml")
+        page1 = _rss_response([item])
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_http([page1])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=detail), \
+             patch("time.sleep"):
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25))
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.categories == ["Music"]
+        assert ev.venue_address == "7464 Hubbard Ave., Middleton, Wisconsin 53562"
+        # Short description in RSS (<80 chars) was enriched from the detail page.
+        assert "Full description body" in (ev.description or "")
+
+    def test_item_without_occ_dtstart_is_skipped(self):
+        item = """
+          <item>
+            <title>Broken Item</title>
+            <link>https://isthmus.com/events/broken/</link>
+          </item>
+        """
+        page1 = _rss_response([item])
+        with patch("app.scrapers.isthmus.http_get_with_retry", side_effect=self._patch_http([page1])), \
+             patch("app.scrapers.isthmus._fetch_detail_soup", return_value=None), \
+             patch("time.sleep"):
+            events = _build_events_from_rss(date(2026, 5, 17), date(2026, 5, 25))
+        assert events == []
 
 
 class TestCategoryMap:
