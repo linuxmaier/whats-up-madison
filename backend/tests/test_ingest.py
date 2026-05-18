@@ -723,3 +723,129 @@ def test_lower_priority_fills_description_after_top_source_clears_it(db):
 
     event = db.query(Event).one()
     assert event.description == vm_description
+
+
+# ---------------------------------------------------------------------------
+# 11. Alliant Energy Center placement (#155): Alliant's calendar carries no
+#     event times (dates only), so it ranks lowest in SOURCE_PRIORITY to keep
+#     time-bearing sources (Isthmus, Visit Madison) authoritative on shared
+#     events. Confirms the placement decision in code: Alliant's all-day raw
+#     does not clobber a higher-priority source's specific times, and its
+#     end_at still fills via null-fill semantics.
+# ---------------------------------------------------------------------------
+
+def test_alliant_does_not_overwrite_visit_madison_times(db):
+    vm_start = datetime(2026, 6, 13, 13, 0, 0, tzinfo=timezone.utc)
+    vm_end = datetime(2026, 6, 13, 16, 0, 0, tzinfo=timezone.utc)
+    vm = _raw(
+        title="Bubble Run – Madison",
+        venue_name="Alliant Energy Center",
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/bubble-run/1",
+        start_at=vm_start,
+        description="Visit Madison's 1000-char curated blurb.",
+    )
+    vm.end_at = vm_end
+    ingest_events("Visit Madison", [vm], db)
+
+    # Alliant later ingests the same event (matched via canonical_hash on
+    # title+date+venue) with all-day midnight values and a different title.
+    alliant_start = datetime(2026, 6, 13, 5, 0, 0, tzinfo=timezone.utc)  # midnight Central
+    alliant_end = datetime(2026, 6, 14, 4, 59, 59, tzinfo=timezone.utc)  # end-of-day Central
+    alliant = _raw(
+        title="Bubble Run – Madison",
+        venue_name="Alliant Energy Center",
+        source_name="Alliant Energy Center",
+        source_url="https://www.alliantenergycenter.com/upcoming-events/events-details/123/bubble-run",
+        start_at=alliant_start,
+        all_day=True,
+        description="Alliant's first-party blurb plus parking info.",
+    )
+    alliant.end_at = alliant_end
+    ingest_events("Alliant Energy Center", [alliant], db)
+
+    assert db.query(Event).count() == 1
+    event = db.query(Event).one()
+    # Visit Madison's start/end times survive.
+    assert event.start_at == vm_start
+    assert event.end_at == vm_end
+    # Visit Madison's description and title survive.
+    assert event.description == "Visit Madison's 1000-char curated blurb."
+    # Both sources are attached.
+    source_names = {s.source_name for s in db.query(EventSource).all()}
+    assert source_names == {"Visit Madison", "Alliant Energy Center"}
+
+
+def test_alliant_fills_null_end_at_on_visit_madison_event(db):
+    # Brat Fest pattern: Visit Madison ships start_at with no end_at; Alliant
+    # supplies the multi-day end_at, which the null-fill rule applies even
+    # for a lower-priority source.
+    vm_start = datetime(2026, 5, 22, 5, 0, 0, tzinfo=timezone.utc)
+    vm = _raw(
+        title="World's Largest Brat Fest",
+        venue_name="Alliant Energy Center",
+        source_name="Visit Madison",
+        source_url="https://visitmadison.com/event/worlds-largest-brat-fest/1",
+        start_at=vm_start,
+        all_day=True,
+    )
+    assert vm.end_at is None
+    ingest_events("Visit Madison", [vm], db)
+
+    event_before = db.query(Event).one()
+    assert event_before.end_at is None
+
+    alliant_end = datetime(2026, 5, 25, 4, 59, 59, tzinfo=timezone.utc)
+    alliant = _raw(
+        title="World's Largest Brat Fest",
+        venue_name="Alliant Energy Center",
+        source_name="Alliant Energy Center",
+        source_url="https://www.alliantenergycenter.com/upcoming-events/events-details/971/brat-fest-2026",
+        start_at=vm_start,
+        all_day=True,
+    )
+    alliant.end_at = alliant_end
+    ingest_events("Alliant Energy Center", [alliant], db)
+
+    event = db.query(Event).one()
+    # Visit Madison's start_at + title untouched, but the null end_at fills.
+    assert event.start_at == vm_start
+    assert event.end_at == alliant_end
+    source_names = {s.source_name for s in db.query(EventSource).all()}
+    assert source_names == {"Visit Madison", "Alliant Energy Center"}
+
+
+def test_alliant_subroom_alias_normalizes_for_dedup(db):
+    # Isthmus's Bridal Expo lists venue_name="Alliant Energy Center-Exhibition Hall"
+    # while Alliant's own scraper lists venue_name="Alliant Energy Center".
+    # The canonical-venue alias maps the compound to the base before hashing
+    # so the two rows merge into one Event.
+    isthmus_start = datetime(2026, 5, 17, 18, 0, 0, tzinfo=timezone.utc)
+    isthmus = _raw(
+        title="Bridal & Wedding Expo",
+        venue_name="Alliant Energy Center-Exhibition Hall",
+        source_name="Isthmus",
+        source_url="https://isthmus.com/events/bridal-wedding-expo/",
+        start_at=isthmus_start,
+    )
+    ingest_events("Isthmus", [isthmus], db)
+
+    alliant_start = datetime(2026, 5, 17, 5, 0, 0, tzinfo=timezone.utc)
+    alliant = _raw(
+        title="Wisconsin Bridal and Wedding Expo",
+        venue_name="Alliant Energy Center",
+        source_name="Alliant Energy Center",
+        source_url="https://www.alliantenergycenter.com/upcoming-events/events-details/964/",
+        start_at=alliant_start,
+        all_day=True,
+    )
+    ingest_events("Alliant Energy Center", [alliant], db)
+
+    # Both rows collapse into one Event via the canonical-venue alias.
+    assert db.query(Event).count() == 1
+    event = db.query(Event).one()
+    # venue_name is canonicalized to the building name.
+    assert event.venue_name == "Alliant Energy Center"
+    # Both sources are attached.
+    source_names = {s.source_name for s in db.query(EventSource).all()}
+    assert source_names == {"Isthmus", "Alliant Energy Center"}

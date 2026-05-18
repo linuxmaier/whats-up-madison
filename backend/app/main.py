@@ -15,6 +15,7 @@ from app.geocode_runner import geocode_all_missing, geocode_missing_for_source
 from app.ingest import ingest_events
 from app.routers import events
 from app.schemas import FeedbackRequest
+from app.scrapers.alliant import AlliantEnergyCenterSource
 from app.scrapers.atwood import AtwoodMusicHallSource
 from app.scrapers.base import BaseSource
 from app.scrapers.city_of_madison import CityOfMadisonSource
@@ -88,6 +89,7 @@ SCRAPERS = [
     IsthmusSource(),
     VisitMadisonSource(),
     CityOfMadisonSource(),
+    AlliantEnergyCenterSource(),
 ]
 
 

@@ -30,6 +30,16 @@ _OVERTURE = CanonicalVenue(
     canonical_name="Overture Center for the Arts",
 )
 
+# Alliant Energy Center campus — south Madison expo/concert/sports complex.
+# Coords + address taken from the venue's own LocalBusiness JSON-LD block.
+# Shared sentinel used as the canonical target for sub-room aliases (Isthmus's
+# "Alliant Energy Center-Exhibition Hall" compound and Visit Madison's "Willow
+# Island at Alliant Energy Center" outdoor-grounds form).
+_ALLIANT = CanonicalVenue(
+    43.045136, -89.381338, "1919 Alliant Energy Center Way, Madison, WI 53713",
+    canonical_name="Alliant Energy Center",
+)
+
 CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "high noon saloon": CanonicalVenue(
         43.0797191, -89.3762962, "701 E Washington Ave, Madison, WI 53703"
@@ -100,6 +110,17 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
         43.1218569, -89.4493683, "4200 County Road M, Middleton, WI 53562",
         canonical_name="Holy Wisdom Monastery",
     ),
+    # Alliant Energy Center building + observed aliases. The base entry has no
+    # canonical_name; only the sub-room / outdoor-grounds aliases below carry
+    # one so ingest normalizes them to the building name before hashing.
+    "alliant energy center": CanonicalVenue(
+        43.045136, -89.381338, "1919 Alliant Energy Center Way, Madison, WI 53713"
+    ),
+    # Isthmus venue-subroom compound form (observed on the Bridal Expo listing).
+    "alliant energy center-exhibition hall": _ALLIANT,
+    # Visit Madison outdoor-grounds form (observed on the World's Largest Brat
+    # Fest listing — Willow Island is the lakeside park within the campus).
+    "willow island at alliant energy center": _ALLIANT,
     # Overture Center building names — the canonical display name is
     # "Overture Center for the Arts"; all sub-room and alias entries
     # below carry canonical_name so ingest normalizes them before hashing.
