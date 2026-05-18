@@ -159,11 +159,12 @@ To add a venue: lowercase the name as it appears in `Event.venue_name`, curl Nom
 
 Prompt-injection hardening (see `docs/PROMPT_INJECTION.md`):
 
+- **Structured output (tool-use).** `_call_llm` passes `tools=[_build_tool_spec()]` and `tool_choice={"type": "tool", "name": "assign_categories"}`. The API enforces the output schema, including an `enum` of valid categories — out-of-taxonomy values are rejected before they reach our code, and free-form text emission is impossible. `_build_tool_spec()` generates the schema dynamically from `CATEGORIES`, so taxonomy additions/removals propagate automatically. `_parse_tool_response` applies `_CATEGORIES_SET` as a defense-in-depth filter.
 - Per-event blocks are wrapped in `<event id="TOKEN">…</event>` so the model and the parser share a structural anchor that's resilient to weird characters inside the description.
-- Batch ids are random 8-char opaque tokens (`_generate_event_token`), not sequential indexes. The parser drops any response line whose id isn't in the batch — so an attacker-controlled description that forges a line for a guessed sibling id can't take effect.
+- Batch ids are random 8-char opaque tokens (`_generate_event_token`), not sequential indexes. `_parse_tool_response` drops any prediction whose id isn't in the batch — so an attacker-controlled description that forges a prediction for a guessed sibling id can't take effect.
 - Descriptions are truncated to `_MAX_DESCRIPTION_LEN` (2000 chars) before being sent, bounding both token spend and attack-surface area.
-- A small regex (`_INJECTION_PATTERN`) scans each description for known injection markers (e.g. "ignore previous instructions", `</system>`, `<|im_start|>`, `[INST]`, "you are now…"). Detections are logged (`logger.warning`) but the event is still tagged — the in-taxonomy whitelist on the parsed output keeps the worst outcomes from being persisted, and log-only gives us visibility before deciding to tighten to drop/quarantine.
-- When changing the tagger prompt or input shape, mirror the change in `backend/eval_tagger.py` so eval results stay representative of production.
+- A small regex (`_INJECTION_PATTERN`) scans each description for known injection markers (e.g. "ignore previous instructions", `</system>`, `<|im_start|>`, `[INST]`, "you are now…"). Detections are logged (`logger.warning`) but the event is still tagged — the API-enforced schema already blocks out-of-taxonomy outcomes, and log-only gives us visibility before deciding to tighten to drop/quarantine.
+- When changing the tagger prompt or input shape, mirror the change in `backend/eval_tagger.py` so eval results stay representative of production. The eval now has a `tooluse` format (default) that mirrors the production flow exactly.
 
 ### Environment Variables
 
