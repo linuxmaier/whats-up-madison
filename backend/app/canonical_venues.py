@@ -34,6 +34,12 @@ CANONICAL_VENUES: dict[str, CanonicalVenue] = {
     "high noon saloon": CanonicalVenue(
         43.0797191, -89.3762962, "701 E Washington Ave, Madison, WI 53703"
     ),
+    # Our Lives stores city="Madison" for Delta Beer Lab; the correct postal
+    # city is Fitchburg (#229). Canonical entry corrects both the displayed
+    # address and the geocoder lookup.
+    "delta beer lab": CanonicalVenue(
+        43.0373542, -89.3823463, "167 E Badger Rd, Fitchburg, WI 53713"
+    ),
     "atwood music hall": CanonicalVenue(
         43.0909400, -89.3556544, "1925 Winnebago St, Madison, WI 53704"
     ),
