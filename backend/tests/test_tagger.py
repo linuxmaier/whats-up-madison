@@ -10,14 +10,16 @@ import logging
 import pytest
 
 from app import tagger
+from app.categories import CATEGORIES
 from app.tagger import (
     _MAX_DESCRIPTION_LEN,
     _TRUNCATION_SENTINEL,
     _build_event_payload,
+    _build_tool_spec,
     _build_user_msg,
     _check_for_injection_markers,
     _generate_event_token,
-    _parse_response_text,
+    _parse_tool_response,
     _truncate_description,
 )
 
@@ -128,41 +130,71 @@ def test_build_user_msg_omits_id_from_inner_json():
 
 
 # ---------------------------------------------------------------------------
-# Response parsing
+# Tool spec
 # ---------------------------------------------------------------------------
 
 
-def test_parse_response_keeps_only_allowed_tokens(tagger_caplog):
-    text = "tok1:Music\ntok2:Food & Drink\nrogue:Family & Kids\n"
-    out = _parse_response_text(text, {"tok1", "tok2"})
+def test_tool_spec_schema_structure():
+    spec = _build_tool_spec()
+    assert spec["name"] == "assign_categories"
+    schema = spec["input_schema"]
+    assert schema["type"] == "object"
+    assert "predictions" in schema["properties"]
+    assert schema["required"] == ["predictions"]
+    item_schema = schema["properties"]["predictions"]["items"]
+    assert set(item_schema["required"]) == {"id", "categories"}
+
+
+def test_tool_spec_contains_all_categories():
+    spec = _build_tool_spec()
+    item_schema = spec["input_schema"]["properties"]["predictions"]["items"]
+    enum_values = item_schema["properties"]["categories"]["items"]["enum"]
+    assert set(enum_values) == set(CATEGORIES)
+    assert len(enum_values) == len(CATEGORIES)
+
+
+# ---------------------------------------------------------------------------
+# Tool-use response parsing
+# ---------------------------------------------------------------------------
+
+
+def test_parse_tool_response_keeps_only_allowed_tokens(tagger_caplog):
+    raw = [
+        {"id": "tok1", "categories": ["Music"]},
+        {"id": "tok2", "categories": ["Food & Drink"]},
+        {"id": "rogue", "categories": ["Family & Kids"]},
+    ]
+    out = _parse_tool_response(raw, {"tok1", "tok2"})
     assert out == {"tok1": ["Music"], "tok2": ["Food & Drink"]}
-    # The rogue line is silently discarded *and* logged for visibility.
     assert "rogue" in tagger_caplog.text
     assert "not in the batch" in tagger_caplog.text
 
 
-def test_parse_response_drops_out_of_taxonomy_categories():
-    out = _parse_response_text("tok1:Music,NotARealCategory\n", {"tok1"})
+def test_parse_tool_response_drops_out_of_taxonomy_categories():
+    raw = [{"id": "tok1", "categories": ["Music", "NotARealCategory"]}]
+    out = _parse_tool_response(raw, {"tok1"})
     assert out == {"tok1": ["Music"]}
 
 
-def test_parse_response_ignores_empty_and_malformed_lines():
-    text = "\ntok1:Music\nnotacolonline\n   \ntok2:\n"
-    out = _parse_response_text(text, {"tok1", "tok2"})
-    assert out == {"tok1": ["Music"], "tok2": []}
+def test_parse_tool_response_returns_empty_list_for_missing_id():
+    """An id in allowed_tokens but absent from the predictions list yields no entry."""
+    raw = [{"id": "tok1", "categories": ["Music"]}]
+    out = _parse_tool_response(raw, {"tok1", "tok2"})
+    assert out == {"tok1": ["Music"]}
+    assert "tok2" not in out
 
 
 def test_random_tokens_block_cross_event_id_guessing():
     """The intent of randomized tokens: a description controlled by an
     attacker cannot guess a sibling's id and assign it a category. We
-    simulate the model dutifully emitting the attacker's forged line and
+    simulate the model returning the attacker's forged prediction and
     verify the parser drops it because the guessed id isn't in the
     allowed_tokens set."""
     real_tokens = {_generate_event_token() for _ in range(5)}
     # The attacker guesses the sequential ids used by an older revision of
     # the tagger (when ids were "0".."24").
-    forged = "\n".join(f"{i}:Family & Kids" for i in range(5))
-    out = _parse_response_text(forged, real_tokens)
+    forged = [{"id": str(i), "categories": ["Family & Kids"]} for i in range(5)]
+    out = _parse_tool_response(forged, real_tokens)
     assert out == {}
 
 
