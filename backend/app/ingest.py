@@ -29,8 +29,23 @@ _OVERWRITABLE_FIELDS = ("title", "description", "start_at", "end_at", "venue_nam
 FUZZY_TITLE_THRESHOLD = 0.65  # tuned empirically against the Isthmus + Visit Madison overlap
 
 
-def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> dict:
-    run_start = datetime.now(timezone.utc)
+def ingest_chunk(
+    source_name: str,
+    raw_events: list[RawEvent],
+    db: Session,
+    *,
+    run_start: datetime,
+) -> dict:
+    """Insert/update one batch of raw events from ``source_name``.
+
+    Commits at the end. Does NOT deactivate stale rows or mark events removed
+    — those passes belong in :func:`finalize_source_run` and only run after
+    the full set of chunks for a source has been processed. The split lets
+    scrapers with long per-event fetch phases (Isthmus) yield events
+    incrementally: each chunk commits while later chunks are still being
+    built, keeping the DB connection warm and persisting partial progress
+    when a later batch fails.
+    """
     inserted = 0
     updated = 0
 
@@ -46,13 +61,16 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
     # same title/date/venue). They produce one Event row, so we must produce
     # one EventSource row too — otherwise the (event_id, source_name) unique
     # constraint trips. We keep the first occurrence and union categories from
-    # the rest.
+    # the rest. Scoped to the chunk: two raws in different chunks with the
+    # same hash collide on the DB lookup instead (the first commit makes the
+    # EventSource visible to the second chunk's query).
     raw_events = _dedupe_by_hash(raw_events)
 
     # Tracks event_ids for which we've already created/updated an EventSource
-    # for source_name in this run. Needed because fuzzy matching can map two
+    # for source_name in this chunk. Needed because fuzzy matching can map two
     # distinct raws (different canonical_hashes) to the same Event row, which
-    # would otherwise produce a duplicate (event_id, source_name) insert.
+    # would otherwise produce a duplicate (event_id, source_name) insert
+    # before the next db.flush() makes the first add visible.
     seen_for_source: set = set()
 
     for raw in raw_events:
@@ -168,10 +186,29 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
                 source.is_active = True
             seen_for_source.add(event.id)
 
-    # Flush pending EventSource inserts so the cleanup queries below can see them
     db.flush()
+    db.commit()
 
-    # Deactivate EventSources from this scraper that weren't seen in this run
+    stats = {"inserted": inserted, "updated": updated}
+    logger.info("%s ingest chunk: %s", source_name, stats)
+    return stats
+
+
+def finalize_source_run(
+    source_name: str,
+    db: Session,
+    *,
+    run_start: datetime,
+) -> dict:
+    """Run end-of-source cleanup after all chunks for ``source_name`` complete.
+
+    Deactivates ``EventSource`` rows from this source that weren't touched
+    (``last_seen_at < run_start``) and marks events with no remaining active
+    sources as ``removed``. Skip this when a chunk raised — without a full
+    pass we can't confidently distinguish "source dropped this event" from
+    "we never got to it before the failure," so the safe default is to leave
+    EventSource rows alone and let the next clean run reconcile.
+    """
     deactivated = (
         db.query(EventSource)
         .filter(
@@ -182,7 +219,6 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
         .update({"is_active": False}, synchronize_session=False)
     )
 
-    # Mark events with no remaining active sources as removed
     active_event_ids = (
         select(EventSource.event_id).where(EventSource.is_active.is_(True))
     )
@@ -193,9 +229,23 @@ def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> 
 
     db.commit()
 
-    stats = {"inserted": inserted, "updated": updated, "deactivated": deactivated}
-    logger.info("%s ingest: %s", source_name, stats)
+    stats = {"deactivated": deactivated}
+    logger.info("%s finalize: %s", source_name, stats)
     return stats
+
+
+def ingest_events(source_name: str, raw_events: list[RawEvent], db: Session) -> dict:
+    """Single-batch convenience wrapper around ingest_chunk + finalize.
+
+    Preserves the original API for tests and any caller that still passes a
+    full list at once. New code should drive the chunked path directly via
+    ``fetch_chunks()`` → ``ingest_chunk()`` → ``finalize_source_run()`` so
+    long-running scrapers don't sit on an idle DB connection.
+    """
+    run_start = datetime.now(timezone.utc)
+    chunk_stats = ingest_chunk(source_name, raw_events, db, run_start=run_start)
+    final_stats = finalize_source_run(source_name, db, run_start=run_start)
+    return {**chunk_stats, **final_stats}
 
 
 def _normalize_title_for_match(title: str) -> str:

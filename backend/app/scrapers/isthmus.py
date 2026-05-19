@@ -2,6 +2,7 @@ import logging
 import re
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
@@ -136,26 +137,53 @@ class IsthmusSource(BaseSource):
     # (stale rescheduled events).
     scraper_type = "rss"
 
-    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
+    def _window(self, window_days: int | None) -> tuple[date, date]:
         # Use Central time, not the container's clock — backend runs in UTC, so
         # date.today() returns tomorrow's date after ~7 PM Central, cutting off
         # today's events from the scrape window.
         today = datetime.now(_CENTRAL).date()
         end_date = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)
+        return today, end_date
+
+    def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         # Open a short-lived session for the detail-page cache. Kept local to
         # this scraper rather than threaded through BaseSource.fetch — Isthmus
         # is the only scraper today that needs persistence inside fetch(), and
         # mixing the cache writes into the orchestrator's request-scoped
         # session would re-couple the two (which #239 just decoupled).
+        today, end_date = self._window(window_days)
         db = SessionLocal()
         try:
             return _build_events_from_rss(today, end_date, db=db)
         finally:
             db.close()
 
+    def fetch_chunks(self, window_days: int | None = None) -> Iterator[list[RawEvent]]:
+        """Yield one batch of RawEvents per RSS page.
 
-def _build_events_from_rss(start: date, end: date, *, db: Session | None = None) -> list[RawEvent]:
-    """Walk the paginated RSS feed and build RawEvents.
+        Each page covers ~50 occurrences and finishes its detail-page fetches
+        in ~25s (0.5s courtesy delay × ~50 cache misses on a cold cache), so
+        the orchestrator's DB session sees writes that often instead of
+        sitting idle for ~17 min while the full feed is walked. The cache and
+        the per-source DB session are independent: this generator owns a
+        ``SessionLocal`` for the ``isthmus_details`` cache; the orchestrator's
+        ``db`` is the one that takes the ingest writes.
+        """
+        today, end_date = self._window(window_days)
+        db = SessionLocal()
+        try:
+            yield from _iter_event_pages_from_rss(today, end_date, db=db)
+        finally:
+            db.close()
+
+
+def _iter_event_pages_from_rss(
+    start: date,
+    end: date,
+    *,
+    db: Session | None = None,
+) -> Iterator[list[RawEvent]]:
+    """Walk the paginated RSS feed yielding one RawEvent batch per page.
 
     Each <item> is one pre-expanded occurrence (recurring events emit one item
     per date). The link/guid carries `occ_dtstart` with the local start
@@ -172,7 +200,7 @@ def _build_events_from_rss(start: date, end: date, *, db: Session | None = None)
     # from this module).
     from app.scrapers.isthmus_cache import compute_rss_signature, get_or_fetch_detail
 
-    events: list[RawEvent] = []
+    total_events = 0
     short_count = enriched_count = failed_count = 0
     cache_hits = cache_misses = 0
     page = 1
@@ -185,6 +213,7 @@ def _build_events_from_rss(start: date, end: date, *, db: Session | None = None)
         if not items:
             break
 
+        page_events: list[RawEvent] = []
         all_beyond_window = True
         for item in items:
             link = item.findtext("link") or ""
@@ -259,7 +288,7 @@ def _build_events_from_rss(start: date, end: date, *, db: Session | None = None)
                     short_count += 1
                     failed_count += 1
 
-            events.append(RawEvent(
+            page_events.append(RawEvent(
                 title=event_name,
                 start_at=start_at,
                 end_at=end_at,
@@ -272,6 +301,10 @@ def _build_events_from_rss(start: date, end: date, *, db: Session | None = None)
                 categories=categories,
             ))
 
+        total_events += len(page_events)
+        if page_events:
+            yield page_events
+
         if all_beyond_window:
             break
         page += 1
@@ -283,5 +316,17 @@ def _build_events_from_rss(start: date, end: date, *, db: Session | None = None)
         )
     if db is not None:
         logger.info("Isthmus detail cache: %d hit, %d miss", cache_hits, cache_misses)
-    logger.info("Isthmus: built %d events from RSS", len(events))
+    logger.info("Isthmus: built %d events from RSS", total_events)
+
+
+def _build_events_from_rss(start: date, end: date, *, db: Session | None = None) -> list[RawEvent]:
+    """Flatten ``_iter_event_pages_from_rss`` into a single list.
+
+    Kept for the back-compat ``IsthmusSource.fetch()`` path and the unit
+    tests that exercise the feed parser directly. New callers should drive
+    the generator and ingest each page as it arrives.
+    """
+    events: list[RawEvent] = []
+    for page in _iter_event_pages_from_rss(start, end, db=db):
+        events.extend(page)
     return events

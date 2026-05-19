@@ -2,6 +2,7 @@ import hashlib
 import html
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -85,3 +86,15 @@ class BaseSource:
 
     def fetch(self, window_days: int | None = None) -> list[RawEvent]:
         raise NotImplementedError
+
+    def fetch_chunks(self, window_days: int | None = None) -> Iterator[list[RawEvent]]:
+        """Yield batches of events as they become available.
+
+        The orchestrator ingests each batch immediately, so scrapers whose
+        fetch phase is long (per-event detail fetches with rate limiting)
+        keep the DB connection warm and persist partial progress if a later
+        batch fails. The default implementation yields one batch containing
+        the full fetch() result — appropriate for fast scrapers where there
+        is no natural chunk boundary.
+        """
+        yield self.fetch(window_days=window_days)

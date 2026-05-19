@@ -2,6 +2,7 @@ import logging
 import logging.config
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import Base, engine, get_db
 from app.geocode_runner import geocode_all_missing, geocode_missing_for_source
-from app.ingest import ingest_events
+from app.ingest import finalize_source_run, ingest_chunk
 from app.routers import events
 from app.schemas import FeedbackRequest
 from app.scrapers.alliant import AlliantEnergyCenterSource
@@ -170,13 +171,25 @@ def trigger_scrape(
             "Starting scrape: %s (window_days=%s, skip_geocode=%s, skip_tag=%s)",
             s.name, days, skip_geocode, skip_tag,
         )
+        run_start = datetime.now(timezone.utc)
+        totals = {"inserted": 0, "updated": 0}
         try:
-            raw = s.fetch(window_days=days)
-            stats = ingest_events(s.name, raw, db)
-            results[s.name] = stats
-            logger.info("Scrape complete: %s — %s", s.name, stats)
+            for chunk in s.fetch_chunks(window_days=days):
+                cs = ingest_chunk(s.name, chunk, db, run_start=run_start)
+                totals["inserted"] += cs["inserted"]
+                totals["updated"] += cs["updated"]
+            # Only run the deactivation/removed-marking sweep on a fully
+            # successful pass. If fetch_chunks raised partway through, we
+            # can't distinguish "source dropped this event" from "we never
+            # got to it," so we leave EventSource rows untouched and the
+            # next clean run reconciles. Partial chunks already committed
+            # by ingest_chunk stay — that's the win over the all-or-nothing
+            # behavior we had before.
+            totals.update(finalize_source_run(s.name, db, run_start=run_start))
+            results[s.name] = totals
+            logger.info("Scrape complete: %s — %s", s.name, totals)
         except Exception as e:
-            results[s.name] = {"error": str(e)}
+            results[s.name] = {**totals, "error": str(e)}
             logger.warning("Scrape failed: %s — %s", s.name, e)
             # Clear any pending/invalid transaction state so the next scraper
             # gets a usable session. Without this, a mid-ingest DB error (e.g.
