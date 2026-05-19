@@ -61,6 +61,8 @@ After writing a scraper, add it to `SCRAPERS` in `backend/app/main.py`. The `POS
 
 When iterating on a scraper, use the `?scraper=…&days=…&skip_geocode=true&skip_tag=true` form of `/admin/scrape` (see *Triggering a Scrape (Dev)* below) — running the full no-arg pipeline for every code change is the slow path.
 
+The orchestrator drives ingestion via `BaseSource.fetch_chunks(window_days)`, which yields one or more `list[RawEvent]` batches. The default implementation wraps `fetch()` as a single batch, so most scrapers can stop at the skeleton above and ignore the chunked interface. Scrapers with long per-event fetch phases (Isthmus spends ~17min on detail-page enrichment on a cold cache) should override `fetch_chunks` to yield events incrementally — the orchestrator commits each batch as it arrives, which keeps the request-scoped DB connection warm and persists partial progress if a later batch fails. See `IsthmusSource.fetch_chunks` for the per-RSS-page pattern.
+
 `fetch()` accepts an optional `window_days` arg so `/admin/scrape?days=N` can narrow the forward window for testing. Structured-feed scrapers (API, iCal, RSS) should honor it (`end = today + timedelta(days=window_days if window_days is not None else _WINDOW_DAYS)`); HTML-calendar scrapers that have no controllable window (High Noon, Atwood) accept the arg, ignore it, and set the class attribute `supports_window_days = False` so the endpoint can flag the no-op in its response.
 
 `RawEvent.canonical_hash()` generates a deduplication key: `sha256(normalized_title|start_date|venue_name)`. Always set `source_name` and `source_url` on every `RawEvent`.
@@ -77,14 +79,16 @@ The closed set of event category tags lives in `backend/app/categories.py` (`CAT
 
 ### Ingestion (`backend/app/ingest.py`)
 
-All scrapers share `ingest_events(source_name, raw_events, db)`. It handles:
-- **Pre-dedup** — collapses multiple raws sharing a `canonical_hash` from the same run before insert (a source can return e.g. two recurring "Volunteer at Foodbank" series with different IDs but identical title/date/venue); categories are unioned across the duplicates
+Ingestion is a two-stage flow driven by the orchestrator in `main.py`: for each scraper it iterates `BaseSource.fetch_chunks`, calls `ingest_chunk(source_name, raw_events, db, *, run_start)` per batch (runs the per-event pipeline, commits at the end of the batch), and then calls `finalize_source_run(source_name, db, *, run_start)` once after the last batch (runs the staleness sweep). Each `ingest_chunk` shares the same `run_start` timestamp, so `finalize_source_run` can identify untouched rows via `last_seen_at < run_start`. A mid-iteration failure (e.g. a flaky network on chunk 5) is caught by the orchestrator: chunks 1-4 are already committed, finalize is **skipped** (we can't safely deactivate things we never got to), and the next clean run reconciles. `ingest_events(source_name, raw_events, db)` is preserved as a single-batch wrapper (one `ingest_chunk` + one `finalize_source_run` with a fresh `run_start`) for unit tests and same-shape back-compat callers.
+
+Together the two stages handle:
+- **Pre-dedup** (per chunk) — collapses multiple raws sharing a `canonical_hash` within the same batch before insert (a source can return e.g. two recurring "Volunteer at Foodbank" series with different IDs but identical title/date/venue); categories are unioned across the duplicates
 - **Upsert** by `canonical_hash` — inserts new events, skips exact duplicates
 - **Fuzzy dedup** — after an exact hash miss, a secondary search matches candidates by time+venue and scores title similarity via `difflib.SequenceMatcher`; events scoring ≥ `FUZZY_TITLE_THRESHOLD` (0.65) are treated as duplicates and merged rather than inserted as new rows; this catches near-identical events listed under slightly different titles by different sources
 - **Source-priority merge** — when a later source has higher trust rank (per `SOURCE_PRIORITY` in `ingest.py`, mirroring the frontend list), it overwrites all non-null `_OVERWRITABLE_FIELDS` (title, description, end_at, venue_name, venue_address); equal- or lower-priority sources only fill null fields. Exception: a same-source re-run at the top of the priority stack that emits `description=None` clears the existing description (if any) — this propagates retroactive boilerplate-filter changes so stale values don't persist across scrape cycles and lower-priority sources can fill via null-fill semantics. `SCRAPERS` in `main.py` runs in `SOURCE_PRIORITY` order (highest-trust first) so the clearing happens before lower-priority sources run in the same cycle.
 - **Category union** — `RawEvent.categories` are merged into `Event.categories` preserving order, no duplicates; later sources can enrich an earlier one
 - **Multi-source** — one `EventSource` row per (event, source); same event from two scrapers gets two `EventSource` rows, both linked to the same `Event`
-- **Staleness** — after each run, deactivates `EventSource` rows from that scraper not seen in the run; marks `Event.status = 'removed'` when no active sources remain
+- **Staleness** (in `finalize_source_run`) — deactivates `EventSource` rows from this scraper whose `last_seen_at < run_start`; marks `Event.status = 'removed'` when no active sources remain. Only runs after every chunk for the source has succeeded.
 - **Re-activation** — if a removed event reappears in a future run, `status` is set back to `'active'`
 
 ### Event Status
