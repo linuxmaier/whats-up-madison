@@ -1,5 +1,6 @@
 import logging
 import logging.config
+import threading
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -58,6 +59,9 @@ logging.config.dictConfig({
 })
 
 logger = logging.getLogger(__name__)
+
+# Serializes /admin/geocode so two passes can't corrupt each other's cache rows.
+_geocode_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -266,7 +270,18 @@ def trigger_tag(model: str = None, _: None = Depends(require_admin_key), db: Ses
 
 @app.post("/admin/geocode")
 def trigger_geocode(force: bool = False, _: None = Depends(require_admin_key), db: Session = Depends(get_db)):
+    # Overlapping passes corrupt each other: `?force=true` deletes cache rows
+    # out from under a concurrent run, which then collides re-inserting them.
+    # One process (uvicorn runs with no --workers) and sync endpoints on a
+    # threadpool, so a plain lock covers it (#255).
+    if not _geocode_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A geocode run is already in progress")
     try:
         return geocode_all_missing(db, force=force)
     except Exception as e:
-        return {"error": str(e)}
+        # Previously returned 200 with an {"error": ...} body, which made an
+        # aborted backfill indistinguishable from a successful one.
+        logger.exception("Geocode run failed")
+        raise HTTPException(status_code=500, detail=f"Geocode run failed: {e}") from e
+    finally:
+        _geocode_lock.release()

@@ -2,9 +2,11 @@ import logging
 import re
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import canonical_venues
@@ -29,6 +31,22 @@ MADISON_VIEWBOX = "-90.2,43.5,-88.7,42.5"
 
 MIN_INTERVAL_SECONDS = 1.05  # Nominatim ToS: max 1 request/second
 REQUEST_TIMEOUT_SECONDS = 10.0
+
+# How long an `error` cache row stands before we re-attempt it.
+#
+# _call_nominatim reports "error" for any exception — rate limiting, 5xx and
+# timeouts included — so an error row is often "we couldn't ask right now"
+# rather than "this place doesn't exist". Treating those as permanent is what
+# left production at 31.6% of events without coordinates after #236 changed the
+# key format: hundreds of fresh keys had to resolve back-to-back at 1 req/sec,
+# a large share failed transiently, and nothing ever retried them. A later
+# `?force=true` pass cleared 173 such rows and recovered 166 events on the spot.
+#
+# A TTL rather than not caching errors at all: during a genuine Nominatim
+# outage, not caching would make every event re-hit the network on every pass.
+# Six hours means a rate-limited key recovers by the next daily scrape without
+# hammering the service in between (#253).
+_ERROR_RETRY_AFTER = timedelta(hours=6)
 
 # "<name> | <city>, wi" marks a venue-name-only lookup so _call_nominatim can
 # rebuild the free-text query with the right town. The city half used to be
@@ -112,20 +130,37 @@ def _call_nominatim(lookup_key: str) -> tuple[str, Optional[dict]]:
     return "success", data[0]
 
 
-def geocode_lookup(lookup_key: str, db: Session) -> Optional[tuple[float, float]]:
-    """Return cached or freshly-fetched (lat, lng) for a lookup key, or None."""
-    cached = db.query(VenueGeocode).filter(VenueGeocode.lookup_key == lookup_key).first()
-    if cached is not None:
-        if cached.status == "success" and cached.latitude is not None and cached.longitude is not None:
-            return (cached.latitude, cached.longitude)
+def _coords_of(row: Optional[VenueGeocode]) -> Optional[tuple[float, float]]:
+    if row is None or row.status != "success":
         return None
+    if row.latitude is None or row.longitude is None:
+        return None
+    return (row.latitude, row.longitude)
 
-    status, result = _call_nominatim(lookup_key)
-    row = VenueGeocode(
-        lookup_key=lookup_key,
-        status=status,
-        geocoder="nominatim",
-    )
+
+def _is_expired(row: VenueGeocode) -> bool:
+    """Whether a cached row should be re-attempted.
+
+    Only ``error`` rows expire. ``success`` and ``not_found`` are answers
+    Nominatim actually gave us and stay put; ``?force=true`` is the escape
+    hatch for re-checking those. See _ERROR_RETRY_AFTER for why errors don't.
+    """
+    if row.status != "error":
+        return False
+    if row.geocoded_at is None:
+        return True
+    stamped = row.geocoded_at
+    if stamped.tzinfo is None:
+        stamped = stamped.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - stamped > _ERROR_RETRY_AFTER
+
+
+def _apply_result(row: VenueGeocode, lookup_key: str, status: str, result: Optional[dict]) -> None:
+    """Write a fresh Nominatim outcome onto a cache row."""
+    row.status = status
+    row.geocoder = "nominatim"
+    row.latitude = None
+    row.longitude = None
     if status == "success" and result is not None:
         try:
             row.latitude = float(result["lat"])
@@ -137,14 +172,42 @@ def geocode_lookup(lookup_key: str, db: Session) -> Optional[tuple[float, float]
             row.latitude = None
             row.longitude = None
 
-    db.add(row)
-    # Commit immediately so a crash mid-run doesn't waste rate-limit budget on
-    # a key we already hit the network for.
-    db.commit()
 
-    if row.status == "success" and row.latitude is not None and row.longitude is not None:
-        return (row.latitude, row.longitude)
-    return None
+def geocode_lookup(lookup_key: str, db: Session) -> Optional[tuple[float, float]]:
+    """Return cached or freshly-fetched (lat, lng) for a lookup key, or None."""
+    cached = db.query(VenueGeocode).filter(VenueGeocode.lookup_key == lookup_key).first()
+    if cached is not None and not _is_expired(cached):
+        return _coords_of(cached)
+
+    status, result = _call_nominatim(lookup_key)
+
+    if cached is not None:
+        # Retry of an expired error: update in place rather than inserting a
+        # second row for the same key (which would violate the unique index).
+        _apply_result(cached, lookup_key, status, result)
+        cached.attempts = (cached.attempts or 1) + 1
+        cached.geocoded_at = datetime.now(timezone.utc)
+        db.commit()
+        return _coords_of(cached)
+
+    row = VenueGeocode(lookup_key=lookup_key, status=status, geocoder="nominatim")
+    _apply_result(row, lookup_key, status, result)
+    db.add(row)
+    try:
+        # Commit immediately so a crash mid-run doesn't waste rate-limit budget
+        # on a key we already hit the network for.
+        db.commit()
+    except IntegrityError:
+        # Another pass inserted this key between our read and our write — the
+        # check-then-insert above is not atomic, and `?force=true` deleting rows
+        # underneath a concurrent run makes the window easy to hit. Take the
+        # winner's answer instead of letting the whole pass die on it (#255).
+        db.rollback()
+        logger.info("Geocode cache race on %r; using the concurrently-written row", lookup_key)
+        winner = db.query(VenueGeocode).filter(VenueGeocode.lookup_key == lookup_key).first()
+        return _coords_of(winner)
+
+    return _coords_of(row)
 
 
 def geocode_event(event: Event, db: Session) -> bool:
