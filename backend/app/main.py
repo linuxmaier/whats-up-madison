@@ -8,10 +8,12 @@ from typing import Optional
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
+from app.models import Event, EventSource
 from app.geocode_runner import geocode_all_missing, geocode_missing_for_source
 from app.ingest import finalize_source_run, ingest_chunk
 from app.routers import events
@@ -101,9 +103,43 @@ def require_admin_key(x_admin_key: Optional[str] = Header(default=None)):
         raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
 
 
+# A scrape that stops running is invisible from the outside — /events keeps
+# serving whatever was last ingested. GitHub silently disabled the Daily Scrape
+# workflow for 60 days of repo inactivity and production went stale for a week
+# before anyone noticed (#244). These fields give the CI freshness check
+# something to alarm on.
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+def health(db: Session = Depends(get_db)):
+    payload: dict = {"status": "ok", "database": "ok"}
+    try:
+        last_ingest = db.query(func.max(EventSource.last_seen_at)).scalar()
+        payload["active_events"] = (
+            db.query(func.count(Event.id)).filter(Event.status == "active").scalar()
+        )
+    except Exception as exc:  # noqa: BLE001 - report degradation, don't crash the probe
+        logger.warning("Health check could not reach the database: %s", exc)
+        return {
+            "status": "ok",
+            "database": "unavailable",
+            "last_ingest_at": None,
+            "hours_since_ingest": None,
+            "active_events": None,
+        }
+
+    if last_ingest is None:
+        payload["last_ingest_at"] = None
+        payload["hours_since_ingest"] = None
+        return payload
+
+    # Rows written before the column carried tzinfo come back naive; assume UTC
+    # so the subtraction below can't raise.
+    if last_ingest.tzinfo is None:
+        last_ingest = last_ingest.replace(tzinfo=timezone.utc)
+    payload["last_ingest_at"] = last_ingest.isoformat()
+    payload["hours_since_ingest"] = round(
+        (datetime.now(timezone.utc) - last_ingest).total_seconds() / 3600, 2
+    )
+    return payload
 
 
 @app.post("/feedback")
