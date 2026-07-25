@@ -3,7 +3,7 @@ from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
-from sqlalchemy import cast, func, select
+from sqlalchemy import cast, select
 from sqlalchemy import Date as SQLDate
 from sqlalchemy.orm import Session
 
@@ -281,7 +281,7 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
     Requires a strong time anchor (exact start_at for timed events, or same
     date + exact venue for all-day events) plus title similarity ≥ threshold.
     """
-    raw_venue = (raw.venue_name or "").lower().strip()
+    raw_venue = canonical_venues.match_key(raw.venue_name)
     has_venue = bool(raw_venue)
 
     # All-day events with no venue have no reliable anchor — skip to avoid false positives.
@@ -293,10 +293,17 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
         q = q.filter(cast(Event.start_at, SQLDate) == raw.start_at.date())
     else:
         q = q.filter(Event.start_at == raw.start_at)
-    if has_venue:
-        q = q.filter(func.lower(func.trim(Event.venue_name)) == raw_venue)
 
     candidates = q.all()
+    # The venue anchor can't be a SQL predicate any more: venues_match compares
+    # normalized base names and treats an absent city suffix as compatible with
+    # a known one, which SQL equality can't express (#236). Candidates are
+    # narrowed by the time anchor in SQL, which keeps the fetched set small,
+    # then filtered on the venue here.
+    if has_venue:
+        candidates = [
+            e for e in candidates if canonical_venues.venues_match(raw.venue_name, e.venue_name)
+        ]
     if not candidates:
         return None
 

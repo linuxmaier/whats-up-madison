@@ -10,6 +10,8 @@ from typing import Optional
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from app import canonical_venues
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,10 +29,14 @@ class RawEvent:
     all_day: bool = False
 
     def canonical_hash(self) -> str:
+        # The venue component is the normalized match key, not the raw name, so
+        # "Hidden Cave Cidery, Middleton" and "Hidden Cave Cidery" hash the same
+        # (#236). venue_name itself is left alone — the geocoder reads the city
+        # suffix off it to build the right Nominatim query.
         key = "|".join([
             self.title.lower().strip(),
             str(self.start_at.date()),
-            (self.venue_name or "").lower().strip(),
+            canonical_venues.match_key(self.venue_name),
         ])
         return hashlib.sha256(key.encode()).hexdigest()
 

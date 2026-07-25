@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app import canonical_venues
-from app.geocoding import geocode_event
+from app.geocoding import geocode_event, normalize_lookup
 from app.models import Event
 
 
@@ -17,6 +17,44 @@ def _event(**overrides) -> Event:
     )
     base.update(overrides)
     return Event(**base)
+
+
+# ---------------------------------------------------------------------------
+# normalize_lookup city handling (#236). The old implementation appended
+# ", madison, wi" to every venue-name-only lookup, so an Isthmus venue outside
+# the city produced "the mill, paoli, madison, wi" — a query naming two towns,
+# bounded to a viewbox the real town fell outside of. 449 of the 720
+# uncoordinated production events carried a city suffix.
+# ---------------------------------------------------------------------------
+
+def test_normalize_lookup_uses_the_venues_own_city():
+    assert normalize_lookup("The Mill, Paoli", None) == "the mill | paoli, wi"
+    assert normalize_lookup("American Players Theatre, Spring Green", None) == (
+        "american players theatre | spring green, wi"
+    )
+
+
+def test_normalize_lookup_defaults_to_madison_without_a_city_suffix():
+    assert normalize_lookup("Cafe Coda", None) == "cafe coda | madison, wi"
+
+
+def test_normalize_lookup_prefers_address_and_keeps_out_of_town_ones_intact():
+    # An address that already names a state must not get ", madison, wi" glued
+    # onto the end of it.
+    assert normalize_lookup(
+        "Hop Garden, Belleville", "107 W Main St, Belleville, WI 53508"
+    ) == "107 w main st, belleville, wi 53508"
+
+
+def test_normalize_lookup_backfills_city_for_a_bare_street_address():
+    assert normalize_lookup(None, "701 E Washington Ave") == (
+        "701 e washington ave, madison, wi"
+    )
+
+
+def test_normalize_lookup_blank_inputs():
+    assert normalize_lookup(None, None) is None
+    assert normalize_lookup("  ", "  ") is None
 
 
 def test_canonical_lookup_normalizes_case_and_whitespace():
