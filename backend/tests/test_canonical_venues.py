@@ -8,7 +8,6 @@ trivia at 7pm stay twenty different bars.
 
 from app import canonical_venues as cv
 
-
 # ---------------------------------------------------------------------------
 # split_city_suffix
 # ---------------------------------------------------------------------------

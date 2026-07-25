@@ -24,7 +24,7 @@ upstream address/coordinates are wrong.
 """
 
 import re
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 
 class CanonicalVenue(NamedTuple):
@@ -265,13 +265,13 @@ _PUNCT_RE = re.compile(r"[^\w\s]")
 _WS_RE = re.compile(r"\s+")
 
 
-def _normalize(venue_name: Optional[str]) -> Optional[str]:
+def _normalize(venue_name: str | None) -> str | None:
     if not venue_name:
         return None
     return venue_name.strip().lower()
 
 
-def split_city_suffix(venue_name: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+def split_city_suffix(venue_name: str | None) -> tuple[str | None, str | None]:
     """Split a trailing ``", <City>"`` into ``(bare_name, city)``.
 
     Only splits when the trailing segment is a known nearby city, so names that
@@ -290,7 +290,7 @@ def split_city_suffix(venue_name: Optional[str]) -> tuple[Optional[str], Optiona
     return venue_name, None
 
 
-def match_parts(venue_name: Optional[str]) -> tuple[str, str]:
+def match_parts(venue_name: str | None) -> tuple[str, str]:
     """Split a venue name into its normalized ``(base, city)`` identity.
 
     Registry entries win outright and key on their canonical name with an empty
@@ -313,7 +313,7 @@ def match_parts(venue_name: Optional[str]) -> tuple[str, str]:
     return _WS_RE.sub(" ", s).strip(), (city or "").strip().lower()
 
 
-def match_key(venue_name: Optional[str]) -> str:
+def match_key(venue_name: str | None) -> str:
     """Return the normalized dedup key for a venue name.
 
     This is a *comparison* key, not a display name — ``Event.venue_name`` keeps
@@ -331,7 +331,7 @@ def match_key(venue_name: Optional[str]) -> str:
     return f"{base}|{city}" if city else base
 
 
-def venues_match(a: Optional[str], b: Optional[str]) -> bool:
+def venues_match(a: str | None, b: str | None) -> bool:
     """Whether two venue names plausibly denote the same place.
 
     Bases must be identical. Cities must agree *when both are known* — a source
@@ -346,7 +346,7 @@ def venues_match(a: Optional[str], b: Optional[str]) -> bool:
     return not city_a or not city_b or city_a == city_b
 
 
-def lookup(venue_name: Optional[str]) -> Optional[CanonicalVenue]:
+def lookup(venue_name: str | None) -> CanonicalVenue | None:
     """Return the canonical entry for ``venue_name``, or None.
 
     Matching is case-insensitive and ignores leading/trailing whitespace.
@@ -357,7 +357,7 @@ def lookup(venue_name: Optional[str]) -> Optional[CanonicalVenue]:
     return CANONICAL_VENUES.get(key)
 
 
-def normalize_name(venue_name: Optional[str]) -> Optional[str]:
+def normalize_name(venue_name: str | None) -> str | None:
     """Return the canonical display name for ``venue_name``.
 
     Registry hits resolve to their ``canonical_name`` so sub-room, alias and
