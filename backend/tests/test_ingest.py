@@ -268,6 +268,102 @@ def test_ampersand_and_normalize_merges_substring(db):
 
 
 # ---------------------------------------------------------------------------
+# 4c. Shared-stopword false merges (#246): a high character ratio is not enough
+#     on its own. American Players Theatre runs several short-titled plays in
+#     repertory in the same slot; "The Chairs" and "The Matchmaker" scored 0.667
+#     purely on the shared "the " and silently collapsed into one event, which
+#     is worse than a duplicate — the surviving row hides the other play.
+# ---------------------------------------------------------------------------
+
+def test_short_titles_sharing_only_an_article_do_not_merge(db):
+    ingest_events(
+        "Isthmus",
+        [_raw(title="The Chairs", venue_name="American Players Theatre, Spring Green")],
+        db,
+    )
+    ingest_events(
+        "Isthmus",
+        [_raw(
+            title="The Matchmaker",
+            venue_name="American Players Theatre, Spring Green",
+            source_url="https://isthmus.com/events/the-matchmaker/",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 2
+
+    # Reverse order — also stays separate.
+    db.query(EventSource).delete()
+    db.query(Event).delete()
+    db.commit()
+    ingest_events(
+        "Isthmus",
+        [_raw(title="The Matchmaker", venue_name="American Players Theatre, Spring Green")],
+        db,
+    )
+    ingest_events(
+        "Isthmus",
+        [_raw(
+            title="The Chairs",
+            venue_name="American Players Theatre, Spring Green",
+            source_url="https://isthmus.com/events/the-chairs/",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 2
+
+
+def test_apt_repertory_slate_stays_distinct(db):
+    # The full set of short-titled plays APT runs in the same slot.
+    titles = [
+        "The Chairs", "The Matchmaker", "Uncle Vanya", "Casey and Diana",
+        "Sueño", "Dontrell, Who Kissed the Sea",
+    ]
+    for i, title in enumerate(titles):
+        ingest_events(
+            "Isthmus",
+            [_raw(
+                title=title,
+                venue_name="American Players Theatre, Spring Green",
+                source_url=f"https://isthmus.com/events/apt-{i}/",
+            )],
+            db,
+        )
+    assert db.query(Event).count() == len(titles)
+
+
+def test_titles_sharing_a_real_word_still_merge(db):
+    # The guard must not block merges backed by a meaningful shared word.
+    for first, second in [
+        ("Unity Picnic", "12th Annual Unity Picnic"),
+        ("Parks Alive", "Parks Alive | Meadowood Park"),
+        ("The Great Gatsby", "The Great Gatsby (Touring)"),
+    ]:
+        db.query(EventSource).delete()
+        db.query(Event).delete()
+        db.commit()
+        ingest_events("Isthmus", [_raw(title=first, venue_name="Test Venue")], db)
+        ingest_events(
+            "Visit Madison",
+            [_raw(title=second, venue_name="Test Venue", source_url="https://vm.example/1")],
+            db,
+        )
+        assert db.query(Event).count() == 1, f"{first!r} should merge with {second!r}"
+
+
+def test_accent_variants_still_merge(db):
+    # Folding accents before tokenizing keeps "Sueno" compatible with "Sueño";
+    # without it the guard would reject a 0.80-ratio pair for sharing no token.
+    ingest_events("Isthmus", [_raw(title="Sueño", venue_name="Test Venue")], db)
+    ingest_events(
+        "Visit Madison",
+        [_raw(title="Sueno", venue_name="Test Venue", source_url="https://vm.example/2")],
+        db,
+    )
+    assert db.query(Event).count() == 1
+
+
+# ---------------------------------------------------------------------------
 # 5. Staleness: event removed from a run → EventSource inactive, Event removed
 # ---------------------------------------------------------------------------
 
