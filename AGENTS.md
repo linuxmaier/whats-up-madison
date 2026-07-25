@@ -297,6 +297,45 @@ curl -X POST 'http://localhost:8000/admin/scrape?scraper=Isthmus&days=3&skip_geo
 
 To backfill or retry geocoding outside a scrape: `curl -X POST 'http://localhost:8000/admin/geocode'` (add `?force=true` to clear non-success cache rows and retry previously-failed lookups).
 
+## Scheduled scraping
+
+`.github/workflows/scrape.yml` POSTs `/admin/scrape` against production daily at 8am CT (`cron: '0 13 * * *'`), authenticated with the `ADMIN_API_KEY` secret. It's also `workflow_dispatch`-able: `gh workflow run scrape.yml`.
+
+### The silent failure mode (#244)
+
+**GitHub disables scheduled workflows after 60 days of repository inactivity, and tells you nothing.** This bit us: the last commit before a quiet stretch was 2026-05-19, the last successful scrape was 2026-07-18 — exactly 60 days later — and production served week-old data until someone happened to notice an event on the wrong date.
+
+Nothing about it is visible from the outside. `GET /events` keeps serving the last successful ingest, so the site looks healthy while quietly going stale. The workflow just stops appearing in `gh run list`.
+
+To check:
+
+```
+gh api repos/linuxmaier/whats-up-madison/actions/workflows --jq '.workflows[] | .name + "  " + .state'
+```
+
+`state=disabled_inactivity` means it was auto-disabled. Re-enable and kick off a run:
+
+```
+gh api -X PUT repos/linuxmaier/whats-up-madison/actions/workflows/<id>/enable
+gh workflow run scrape.yml
+```
+
+A stale row left behind by a missed scrape **self-heals** once scraping resumes — the staleness sweep in `finalize_source_run` deactivates the untouched `EventSource` and flips the event to `status='removed'`. No manual cleanup needed. That's why #244's wrong-date row needed no code fix.
+
+### Freshness monitoring
+
+Two pieces turn the silent freeze into a loud one:
+
+- **`GET /health`** reports `last_ingest_at`, `hours_since_ingest`, `active_events`, and `database`. The DB query is wrapped so an outage returns 200 with `database: "unavailable"` and null fields rather than a 500 — the endpoint doubles as a liveness probe and must not take the app down.
+- **The `freshness` job in `ci.yml`** runs `.github/scripts/check_freshness.sh`, which polls production `/health` and fails when `hours_since_ingest` exceeds 48 or the database is unreachable.
+
+Two deliberate choices in that job:
+
+- It runs on **`push` to main as well as on a schedule**. A schedule-only checker would share the exact weakness it's guarding against — it would be disabled at the same moment the scrape was. The push trigger is the durable half.
+- It is **not in any `needs:` list** and doesn't gate `deploy`. Stale production data must never block shipping the fix for stale production data.
+
+The script retries with backoff because `min_machines_running = 0` in `backend/fly.toml` means the first request can cold-start the machine.
+
 ## Current Build Status
 
 - **Done (Step 1):** repo skeleton, Docker Compose, PostgreSQL, SQLAlchemy models, FastAPI `GET /events?date=` endpoint, scraper base class.
@@ -305,7 +344,8 @@ To backfill or retry geocoding outside a scrape: `curl -X POST 'http://localhost
 - **Done (Step 5):** geocoding pipeline (Nominatim, cached per venue in `venue_geocodes`) runs after each scraper; `latitude`/`longitude` exposed on the API; List/Map segmented toggle in the header renders a Leaflet map of Madison with clustered pins, multi-event popups, and a panel for events whose venues didn't resolve.
 - **Done (recent polish):** fuzzy cross-source dedup in ingest (title similarity ≥ 0.65 anchored by time + venue); explicit source priority ranking (`SOURCE_PRIORITY` in `frontend/src/lib/sources.js`); Isthmus description enrichment from event detail pages; Isthmus detail-page extractions cached in `isthmus_details` keyed by URL (with `occ_dtstart` stripped) and refreshed only when the RSS-visible name / venue / description changes — see `backend/app/scrapers/isthmus_cache.py`; Previous/Next nav buttons; sticky-header layout fixes.
 - **Done (CI/CD):** backend auto-deploys to Fly.io on push to main via the `deploy` job in `.github/workflows/ci.yml` — runs after lint + tests pass, only when `backend/**` files changed. Frontend auto-deploys to Cloudflare Workers on every push to main (Cloudflare's built-in CI). Requires `FLY_API_TOKEN` GitHub secret (Fly.io deploy token).
-- **In progress (Step 3):** eleven scrapers integrated — Isthmus (paginated RSS — was iCal + RSS through #231; dropped iCal because RSS covers ~7x more events for the same window and was the source of #210/#228), Visit Madison (Simpleview JSON API), High Noon Saloon (HTML calendar), Our Lives (Tribe Events REST), Ticketmaster (Discovery API, multi-venue: Sylvee, Orpheum, Kohl Center, etc.), Atwood Music Hall (Squarespace events collection — also surfaces sister-venue shows at Barrymore Theatre + Liquid), Majestic Theatre (HTML calendar, same FPC Live theme as High Noon; ranked above Ticketmaster in `SOURCE_PRIORITY` because the venue site's `Event Description` section is materially richer than TM's boilerplate-dominated `info`/`pleaseNote`), DMI (Downtown Madison Inc., Tribe Events REST on `downtownmadison.org` filtered to the `dmi-events` category — public-facing DMI events like What's Up Downtown, New Faces New Places, the I.D.E.A. Series, Behind The Scenes, and the Annual Celebration; small but high-signal civic source with zero overlap with other aggregators), Wisconsin Chamber Orchestra (Craft-CMS site at `wcoconcerts.org`, `GET /load/events` AJAX endpoint returns the upcoming WCO slate — the six free Concerts on the Square outdoor evenings on the Capitol Square plus indoor series at Hamel Music Center and Overture Center; pre-tagged `Music`, detail-page enriched for show copy, venue em-dash compounds normalized to room names so Overture sub-rooms merge via canonical-venues), City of Madison (official municipal events at `cityofmadison.com/events` — Drupal 10 server-rendered HTML; paginates `?page=N` with a browser-like UA required by the site WAF; 30-day window; detail-page description enrichment; high signal for parks programming, civic meetings, and community events not covered by entertainment aggregators), Alliant Energy Center (`alliantenergycenter.com/upcoming-events` — DotNetNuke server-rendered HTML, single GET returns ~16 events spanning ~2.5 months; expo / agricultural / civic content not covered by other sources: The Madison Classic Horse Show, FFA Convention, Dane County Fair, Red Angus Junior National Show, autocross, scrapbook conventions, HS graduations; calendar is dates-only — no event times — so ranked **last** in `SOURCE_PRIORITY` to keep time-bearing sources authoritative on shared events while still null-filling multi-day `end_at` on events like Visit Madison's Brat Fest; canonical-venue aliases for Isthmus's `Alliant Energy Center-Exhibition Hall` and Visit Madison's `Willow Island at Alliant Energy Center` collapse to the building name before hashing). The Overture Center scraper was shipped but deprecated in #162 after we confirmed Imperva blocks all `*.overture.org` paths from Fly.io's IP range; canonical-venue normalization still tags Isthmus/Ticketmaster/WCO events at Overture correctly. All but High Noon, Atwood, Majestic, and WCO use a 30-day forward window; those four pull whatever the venue has posted (typically several to ~15 months). More candidate sources in `docs/EVENT_SOURCES.md`; daily scheduling not yet wired up (no APScheduler — recommend running `/admin/scrape` from cron / systemd timer / external scheduler).
+- **Done (scheduling):** `.github/workflows/scrape.yml` POSTs `/admin/scrape` daily at 8am CT. See *Scheduled scraping* below — **the schedule has a silent failure mode you need to know about.**
+- **In progress (Step 3):** eleven scrapers integrated — Isthmus (paginated RSS — was iCal + RSS through #231; dropped iCal because RSS covers ~7x more events for the same window and was the source of #210/#228), Visit Madison (Simpleview JSON API), High Noon Saloon (HTML calendar), Our Lives (Tribe Events REST), Ticketmaster (Discovery API, multi-venue: Sylvee, Orpheum, Kohl Center, etc.), Atwood Music Hall (Squarespace events collection — also surfaces sister-venue shows at Barrymore Theatre + Liquid), Majestic Theatre (HTML calendar, same FPC Live theme as High Noon; ranked above Ticketmaster in `SOURCE_PRIORITY` because the venue site's `Event Description` section is materially richer than TM's boilerplate-dominated `info`/`pleaseNote`), DMI (Downtown Madison Inc., Tribe Events REST on `downtownmadison.org` filtered to the `dmi-events` category — public-facing DMI events like What's Up Downtown, New Faces New Places, the I.D.E.A. Series, Behind The Scenes, and the Annual Celebration; small but high-signal civic source with zero overlap with other aggregators), Wisconsin Chamber Orchestra (Craft-CMS site at `wcoconcerts.org`, `GET /load/events` AJAX endpoint returns the upcoming WCO slate — the six free Concerts on the Square outdoor evenings on the Capitol Square plus indoor series at Hamel Music Center and Overture Center; pre-tagged `Music`, detail-page enriched for show copy, venue em-dash compounds normalized to room names so Overture sub-rooms merge via canonical-venues), City of Madison (official municipal events at `cityofmadison.com/events` — Drupal 10 server-rendered HTML; paginates `?page=N` with a browser-like UA required by the site WAF; 30-day window; detail-page description enrichment; high signal for parks programming, civic meetings, and community events not covered by entertainment aggregators), Alliant Energy Center (`alliantenergycenter.com/upcoming-events` — DotNetNuke server-rendered HTML, single GET returns ~16 events spanning ~2.5 months; expo / agricultural / civic content not covered by other sources: The Madison Classic Horse Show, FFA Convention, Dane County Fair, Red Angus Junior National Show, autocross, scrapbook conventions, HS graduations; calendar is dates-only — no event times — so ranked **last** in `SOURCE_PRIORITY` to keep time-bearing sources authoritative on shared events while still null-filling multi-day `end_at` on events like Visit Madison's Brat Fest; canonical-venue aliases for Isthmus's `Alliant Energy Center-Exhibition Hall` and Visit Madison's `Willow Island at Alliant Energy Center` collapse to the building name before hashing). The Overture Center scraper was shipped but deprecated in #162 after we confirmed Imperva blocks all `*.overture.org` paths from Fly.io's IP range; canonical-venue normalization still tags Isthmus/Ticketmaster/WCO events at Overture correctly. All but High Noon, Atwood, Majestic, and WCO use a 30-day forward window; those four pull whatever the venue has posted (typically several to ~15 months). More candidate sources in `docs/EVENT_SOURCES.md`.
 
 Backend: http://localhost:8000 — API docs: http://localhost:8000/docs
 Frontend: http://localhost:5173

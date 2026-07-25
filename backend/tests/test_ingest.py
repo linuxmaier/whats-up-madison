@@ -385,6 +385,39 @@ def test_staleness_deactivates_and_removes(db):
 # 6. Reactivation: removed event reappears → status back to active
 # ---------------------------------------------------------------------------
 
+def test_wrong_date_row_self_heals_on_the_next_run(db):
+    # The #244 scenario. Production held "First Friday Open Mic" on 2026-08-14
+    # while the source lists Aug 7. The listing page and parser were both
+    # correct — the row was stale, left behind because the Daily Scrape had been
+    # disabled for a week. Once scraping resumes, the staleness sweep retires
+    # the wrong-date row and the correct one ingests alongside it.
+    wrong = _raw(
+        title="First Friday Open Mic",
+        start_at=datetime(2026, 8, 14, 15, 0, 0, tzinfo=timezone.utc),
+        venue_name="Madison Senior Center",
+        source_name="City of Madison",
+    )
+    ingest_events("City of Madison", [wrong], db)
+    assert db.query(Event).filter_by(status="active").count() == 1
+
+    # Next run: the source only returns the correct Aug 7 occurrence.
+    corrected = _raw(
+        title="First Friday Open Mic",
+        start_at=datetime(2026, 8, 7, 15, 0, 0, tzinfo=timezone.utc),
+        venue_name="Madison Senior Center",
+        source_name="City of Madison",
+    )
+    ingest_events("City of Madison", [corrected], db)
+
+    active = db.query(Event).filter_by(status="active").all()
+    assert len(active) == 1
+    assert active[0].start_at == datetime(2026, 8, 7, 15, 0, 0, tzinfo=timezone.utc)
+
+    removed = db.query(Event).filter_by(status="removed").all()
+    assert len(removed) == 1
+    assert removed[0].start_at == datetime(2026, 8, 14, 15, 0, 0, tzinfo=timezone.utc)
+
+
 def test_reactivation(db):
     ingest_events("Source A", [_raw()], db)
     ingest_events("Source A", [], db)

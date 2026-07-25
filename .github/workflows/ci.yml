@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Drives the `freshness` job below. A schedule alone would be no good — GitHub
+  # disables scheduled triggers repo-wide after 60 days of inactivity, which is
+  # exactly the failure this job exists to catch, so it would go quiet at the
+  # same moment the scrape did. The push trigger is the durable half.
+  schedule:
+    - cron: '0 16 * * *'  # 11am CT, ~3h after the Daily Scrape
 
 jobs:
   lint:
@@ -43,6 +49,26 @@ jobs:
           python-version: "3.12"
       - run: pip install -r backend/requirements.txt
       - run: pytest backend/tests/ -v
+
+  # Production data going stale is invisible from the outside: /events keeps
+  # serving the last successful ingest. GitHub silently disabled the Daily
+  # Scrape workflow after 60 days of repo inactivity and production froze for a
+  # week before it was noticed (#244). This turns that into a red job.
+  #
+  # Deliberately NOT in any `needs:` list — stale production data must never
+  # block shipping the fix for stale production data.
+  freshness:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production ingest freshness
+        run: ./.github/scripts/check_freshness.sh
+        env:
+          # fly.toml sets min_machines_running = 0, so the first request may
+          # cold-start the machine; the script retries before failing.
+          HEALTH_URL: https://whats-up-madison.fly.dev/health
+          MAX_AGE_HOURS: "48"
 
   deploy:
     needs: [lint, frontend-lint, test]
