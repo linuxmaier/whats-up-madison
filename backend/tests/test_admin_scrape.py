@@ -156,3 +156,47 @@ def test_skip_tag(client, fakes):
     assert "_tagging" not in body
     assert fakes["tag_calls"] == []
     assert fakes["geocode_calls"] == ["Fake A", "Fake B"]
+
+
+# ---------------------------------------------------------------------------
+# /admin/geocode robustness (#255). Two overlapping passes corrupted each
+# other's cache rows — `?force=true` deletes rows a concurrent run then
+# re-inserts — and the endpoint reported the resulting crash as HTTP 200 with
+# an {"error": ...} body, so an aborted backfill looked like a success.
+# ---------------------------------------------------------------------------
+
+def test_geocode_rejects_a_concurrent_run(client, monkeypatch):
+    monkeypatch.setattr(
+        main_module, "geocode_all_missing", lambda *a, **k: pytest.fail("should not run")
+    )
+    # Simulate a pass already in flight.
+    assert main_module._geocode_lock.acquire(blocking=False)
+    try:
+        resp = client.post("/admin/geocode")
+    finally:
+        main_module._geocode_lock.release()
+
+    assert resp.status_code == 409
+    assert "already in progress" in resp.json()["detail"]
+
+
+def test_geocode_releases_the_lock_after_a_run(client, monkeypatch):
+    monkeypatch.setattr(main_module, "geocode_all_missing", lambda *a, **k: {"events_updated": 0})
+
+    assert client.post("/admin/geocode").status_code == 200
+    # A failed release would wedge the endpoint permanently.
+    assert client.post("/admin/geocode").status_code == 200
+
+
+def test_geocode_failure_is_not_reported_as_success(client, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("duplicate key value violates unique constraint")
+
+    monkeypatch.setattr(main_module, "geocode_all_missing", boom)
+
+    resp = client.post("/admin/geocode")
+    assert resp.status_code == 500
+    assert "Geocode run failed" in resp.json()["detail"]
+    # And the lock must still be free afterwards.
+    assert main_module._geocode_lock.acquire(blocking=False)
+    main_module._geocode_lock.release()

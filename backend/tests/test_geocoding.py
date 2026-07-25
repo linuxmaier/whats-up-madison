@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import text
 
 from app import canonical_venues
 from app.geocoding import geocode_event, normalize_lookup
@@ -250,6 +251,140 @@ def test_both_keys_missing_are_cached_so_neither_is_retried(db, monkeypatch):
     assert seen == []
 
 
+# ---------------------------------------------------------------------------
+# Cache durability (#253, #255).
+#
+# #253: _call_nominatim reports "error" for any exception — rate limiting and
+# 5xx included — and those used to be cached forever. After #236 changed the key
+# format, hundreds of fresh keys resolved back-to-back at 1 req/sec, a large
+# share failed transiently, and production sat at 31.6% of events without
+# coordinates until a ?force=true pass cleared 173 rows and recovered 166 events.
+#
+# #255: check-then-insert had no conflict handling, so two overlapping passes
+# collided on a duplicate lookup_key and the poisoned session voided the rest of
+# the run.
+# ---------------------------------------------------------------------------
+
+def _cache_row(db, lookup_key):
+    return db.query(VenueGeocode).filter(VenueGeocode.lookup_key == lookup_key).first()
+
+
+def test_expired_error_row_is_retried_and_updated_in_place(db, monkeypatch):
+    venue = "Flaky Lookup Tavern"
+    key = normalize_lookup(venue, None)
+    db.add(VenueGeocode(
+        lookup_key=key,
+        status="error",
+        geocoder="nominatim",
+        geocoded_at=datetime.now(timezone.utc) - timedelta(hours=24),
+    ))
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr(
+        "app.geocoding._call_nominatim", _nominatim_stub({key: (43.07, -89.40)}, seen)
+    )
+
+    event = _event(canonical_hash="h-253-a", venue_name=venue, venue_address=None)
+    db.add(event)
+    db.commit()
+
+    assert geocode_event(event, db) is True
+    assert (event.latitude, event.longitude) == (43.07, -89.40)
+    assert seen == [key]
+
+    # Updated in place — a second row would violate the unique index, which is
+    # exactly the crash #255 describes.
+    rows = db.query(VenueGeocode).filter(VenueGeocode.lookup_key == key).all()
+    assert len(rows) == 1
+    assert rows[0].status == "success"
+    assert rows[0].attempts == 2
+
+
+def test_error_row_within_the_ttl_is_not_retried(db, monkeypatch):
+    venue = "Recently Failed Cafe"
+    key = normalize_lookup(venue, None)
+    db.add(VenueGeocode(
+        lookup_key=key,
+        status="error",
+        geocoder="nominatim",
+        geocoded_at=datetime.now(timezone.utc) - timedelta(minutes=30),
+    ))
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr("app.geocoding._call_nominatim", _nominatim_stub({key: (1.0, 2.0)}, seen))
+
+    event = _event(canonical_hash="h-253-b", venue_name=venue, venue_address=None)
+    db.add(event)
+    db.commit()
+
+    assert geocode_event(event, db) is False
+    assert seen == [], "a fresh error row must not cost a network call"
+
+
+def test_not_found_and_success_rows_never_expire(db, monkeypatch):
+    # Nominatim answered in both cases; those are stable answers. ?force=true
+    # remains the way to re-check them.
+    old = datetime.now(timezone.utc) - timedelta(days=30)
+    nf_venue, ok_venue = "Ancient Missing Hall", "Ancient Known Hall"
+    nf_key, ok_key = normalize_lookup(nf_venue, None), normalize_lookup(ok_venue, None)
+    db.add(VenueGeocode(lookup_key=nf_key, status="not_found", geocoder="nominatim", geocoded_at=old))
+    db.add(VenueGeocode(
+        lookup_key=ok_key, status="success", geocoder="nominatim",
+        latitude=43.1, longitude=-89.4, geocoded_at=old,
+    ))
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr("app.geocoding._call_nominatim", _nominatim_stub({}, seen))
+
+    nf_event = _event(canonical_hash="h-253-c", venue_name=nf_venue, venue_address=None)
+    ok_event = _event(canonical_hash="h-253-d", venue_name=ok_venue, venue_address=None)
+    db.add(nf_event)
+    db.add(ok_event)
+    db.commit()
+
+    assert geocode_event(nf_event, db) is False
+    assert geocode_event(ok_event, db) is True
+    assert (ok_event.latitude, ok_event.longitude) == (43.1, -89.4)
+    assert seen == [], "settled answers must not be re-queried"
+
+
+def test_concurrent_insert_of_the_same_key_is_not_fatal(db, SessionFactory, monkeypatch):
+    # Reproduces #255: another pass writes the row between our cache read and
+    # our insert. Previously this raised and poisoned the session for the rest
+    # of the run; now we take the winner's answer.
+    venue = "Race Condition Brewery"
+    key = normalize_lookup(venue, None)
+
+    def racing_call(lookup_key):
+        # Simulate the competing writer landing first, committed on its own
+        # connection so our INSERT genuinely conflicts.
+        other = SessionFactory()
+        other.add(VenueGeocode(
+            lookup_key=lookup_key, status="success", geocoder="nominatim",
+            latitude=11.0, longitude=22.0,
+        ))
+        other.commit()
+        other.close()
+        return "success", {"lat": "99.0", "lon": "88.0", "display_name": "ours"}
+
+    monkeypatch.setattr("app.geocoding._call_nominatim", racing_call)
+
+    event = _event(canonical_hash="h-255-a", venue_name=venue, venue_address=None)
+    db.add(event)
+    db.commit()
+
+    assert geocode_event(event, db) is True
+    # The winner's coordinates, not ours — and crucially, no exception.
+    assert (event.latitude, event.longitude) == (11.0, 22.0)
+    assert len(db.query(VenueGeocode).filter(VenueGeocode.lookup_key == key).all()) == 1
+
+    # The session must still be usable afterwards.
+    assert db.query(VenueGeocode).count() >= 1
+
+
 def test_non_canonical_venue_falls_through_to_nominatim_path(db, monkeypatch):
     event = _event(
         canonical_hash="hash-4",
@@ -271,3 +406,31 @@ def test_non_canonical_venue_falls_through_to_nominatim_path(db, monkeypatch):
     assert calls == ["lookup"]
     assert event.latitude == 43.0
     assert event.longitude == -89.4
+
+
+def test_one_failing_event_does_not_void_the_rest_of_the_pass(db, monkeypatch):
+    # The #255 blast radius. A failure leaves the session rolled back, so
+    # without an explicit rollback every later db.query() raises too and the
+    # loop silently accomplishes nothing for the remainder of the run.
+    from app.geocode_runner import geocode_all_missing
+
+    venues = ["Pass Alpha Hall", "Pass Bravo Hall", "Pass Charlie Hall"]
+    for i, v in enumerate(venues):
+        db.add(_event(canonical_hash=f"h-255-run-{i}", venue_name=v, venue_address=None))
+    db.commit()
+
+    boom_key = normalize_lookup("Pass Alpha Hall", None)
+
+    def flaky(lookup_key):
+        if lookup_key == boom_key:
+            # Break the session the way a duplicate insert does.
+            db.execute(text("SELECT * FROM definitely_not_a_table"))
+        return "success", {"lat": "43.0", "lon": "-89.4", "display_name": "ok"}
+
+    monkeypatch.setattr("app.geocoding._call_nominatim", flaky)
+
+    stats = geocode_all_missing(db)
+
+    # The other two still resolved despite the first one blowing up.
+    assert stats["events_updated"] == 2, stats
+    assert stats["errors"] == 1, stats

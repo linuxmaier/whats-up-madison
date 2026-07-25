@@ -48,6 +48,10 @@ def geocode_missing_for_source(source_name: str, db: Session) -> dict:
             updated = geocode_event(event, db)
         except Exception as e:
             logger.warning("Geocode failed for event %s: %s", event.id, e)
+            # Without this the session stays in a rolled-back state and every
+            # later query raises, so a single bad event silently voids the rest
+            # of the pass while the loop keeps counting misses (#255).
+            db.rollback()
             misses += 1
             continue
         if updated:
@@ -91,6 +95,9 @@ def geocode_all_missing(db: Session, force: bool = False) -> dict:
             updated = geocode_event(event, db)
         except Exception as e:
             logger.warning("Geocode failed for event %s: %s", event.id, e)
+            # See geocode_missing_for_source — a poisoned session otherwise
+            # makes every remaining event fail too (#255).
+            db.rollback()
             errors += 1
             continue
         if updated:
