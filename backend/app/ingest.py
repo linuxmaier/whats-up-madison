@@ -1,4 +1,6 @@
 import logging
+import re
+import unicodedata
 from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
@@ -27,6 +29,17 @@ SOURCE_PRIORITY = ["High Noon Saloon", "Atwood Music Hall", "Majestic Theatre", 
 _OVERWRITABLE_FIELDS = ("title", "description", "start_at", "end_at", "venue_name", "venue_address")
 
 FUZZY_TITLE_THRESHOLD = 0.65  # tuned empirically against the Isthmus + Visit Madison overlap
+
+# Dropped from the head of a title before scoring — see _normalize_title_for_match.
+_LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+")
+
+# Words that carry no identifying signal, so two titles sharing only these are
+# not evidence of the same event (#246).
+_TITLE_STOPWORDS = frozenset({
+    "the", "a", "an", "of", "and", "in", "on", "at", "to", "for", "with",
+    "by", "from", "featuring", "feat", "presents",
+})
+_TITLE_WORD_RE = re.compile(r"[a-z0-9']+")
 
 
 def ingest_chunk(
@@ -266,13 +279,52 @@ def _normalize_title_for_match(title: str) -> str:
     below the fuzzy threshold). Anchored to the end so titles that mention
     Madison mid-string (e.g. "Concert - Madison Symphony") are untouched.
     Applied only to the matching key — stored titles are unchanged.
+
+    Finally drops a leading article ("the ", "a ", "an "). On short titles the
+    shared prefix is a large fraction of the comparison and inflates the ratio
+    past the threshold: American Players Theatre runs "The Chairs" and "The
+    Matchmaker" in repertory in the same slot, and they scored 0.667 purely on
+    the shared "the " (#246). Mirrors the leading-"the" strip that
+    ``canonical_venues.match_key`` already applies on the venue side.
     """
     s = title.lower().strip().replace(" & ", " and ")
     for suffix in (" - madison, wi", " - madison"):
         if s.endswith(suffix):
             s = s[: -len(suffix)].rstrip()
             break
-    return s
+    return _LEADING_ARTICLE_RE.sub("", s)
+
+
+def _significant_title_tokens(normalized_title: str) -> set[str]:
+    """Words in an already-normalized title that carry identifying signal.
+
+    Accents are folded first so a source that ships "Sueno" for APT's "Sueño"
+    still shares a token with it — without folding the two would look like
+    completely different words despite a 0.80 character ratio.
+    """
+    folded = "".join(
+        c for c in unicodedata.normalize("NFKD", normalized_title)
+        if not unicodedata.combining(c)
+    )
+    return {w for w in _TITLE_WORD_RE.findall(folded) if w not in _TITLE_STOPWORDS}
+
+
+def _shares_significant_token(title_a: str, title_b: str) -> bool:
+    """Whether two normalized titles share at least one meaningful word.
+
+    Used as a guard *after* the similarity score clears the threshold, so it can
+    only reject a merge, never create one. Without it, two unrelated short
+    titles clear 0.65 on shared stopwords alone — "The Chairs" and "The
+    Matchmaker" scored 0.667 and silently collapsed into one event (#246).
+
+    When either title has no significant words left (a title made entirely of
+    stopwords), there is nothing to judge on, so the score stands unchallenged.
+    """
+    tokens_a = _significant_title_tokens(title_a)
+    tokens_b = _significant_title_tokens(title_b)
+    if not tokens_a or not tokens_b:
+        return True
+    return bool(tokens_a & tokens_b)
 
 
 def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
@@ -321,6 +373,11 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
         # start_at + venue_name anchor.
         if raw_title and cand_title and (raw_title in cand_title or cand_title in raw_title):
             ratio = max(ratio, 1.0)
+        # A high character ratio is not enough on its own: two unrelated short
+        # titles can clear the threshold on shared stopwords alone. Require at
+        # least one meaningful word in common before the score counts (#246).
+        if not _shares_significant_token(raw_title, cand_title):
+            continue
         if ratio > best_ratio:
             best_ratio, best = ratio, event
 
