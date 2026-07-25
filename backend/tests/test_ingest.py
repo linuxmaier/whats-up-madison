@@ -510,6 +510,153 @@ def test_orpheum_the_prefix_venue_alias_merges(db):
 
 
 # ---------------------------------------------------------------------------
+# 10c. Generic venue normalization (#236): the venue anchor now compares
+#      canonical_venues.match_key() rather than the raw string, so the
+#      ", <City>" suffix Isthmus appends to out-of-town venues, "&"/"and",
+#      a leading "The" and stray punctuation all stop blocking a merge.
+#      Measured on 45 days of production data, venue-string variants accounted
+#      for ~25 missed merges — more than the title threshold's 15.
+# ---------------------------------------------------------------------------
+
+def test_city_suffix_merges_without_a_registry_entry(db):
+    # Isthmus ships "Hidden Cave Cidery, Middleton"; Our Lives ships the bare
+    # name. Neither is in the canonical registry — the generic match key is
+    # what collapses them.
+    ingest_events(
+        "Isthmus",
+        [_raw(title="Cider Market", venue_name="Hidden Cave Cidery, Middleton")],
+        db,
+    )
+    ingest_events(
+        "Our Lives",
+        [_raw(
+            title="Cider Market",
+            venue_name="Hidden Cave Cidery",
+            source_url="https://ourlivesmadison.com/event/1",
+        )],
+        db,
+    )
+
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+    # Reverse order — bare name first, city-suffixed second.
+    db.query(EventSource).delete()
+    db.query(Event).delete()
+    db.commit()
+    ingest_events(
+        "Our Lives",
+        [_raw(title="Cider Market", venue_name="Hidden Cave Cidery")],
+        db,
+    )
+    ingest_events(
+        "Isthmus",
+        [_raw(
+            title="Cider Market",
+            venue_name="Hidden Cave Cidery, Middleton",
+            source_url="https://isthmus.com/events/cider-market/",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+
+def test_venue_punctuation_and_ampersand_variants_merge(db):
+    # City of Madison ships "Monona Terrace Community & Convention Center",
+    # Visit Madison the spelled-out "and" form.
+    ingest_events(
+        "Visit Madison",
+        [_raw(title="Rooftop Yoga", venue_name="Monona Terrace Community and Convention Center")],
+        db,
+    )
+    ingest_events(
+        "City of Madison",
+        [_raw(
+            title="Rooftop Yoga",
+            venue_name="Monona Terrace Community & Convention Center",
+            source_url="https://www.cityofmadison.com/events/rooftop-yoga",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 1
+    assert db.query(EventSource).count() == 2
+
+
+def test_source_venue_typo_merges_via_registry_alias(db):
+    # The City of Madison feed misspells the park as "Meadoowood Park".
+    ingest_events(
+        "Isthmus",
+        [_raw(title="Parks Alive", venue_name="Meadowood Park")],
+        db,
+    )
+    ingest_events(
+        "City of Madison",
+        [_raw(
+            title="Parks Alive",
+            venue_name="Meadoowood Park",
+            source_url="https://www.cityofmadison.com/events/parks-alive",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 1
+    event = db.query(Event).one()
+    assert event.venue_name == "Meadowood Park"
+
+
+def test_same_venue_name_in_different_towns_stays_separate(db):
+    # Buck and Honey's runs four locations under one name. The city suffix is
+    # the ONLY thing distinguishing them, so it has to stay in the dedup key —
+    # a chain promo with the same title on the same night must not collapse
+    # four venues into one row.
+    towns = ["Monona", "Mount Horeb", "Sun Prairie", "Waunakee"]
+    for i, town in enumerate(towns):
+        ingest_events(
+            "Isthmus",
+            [_raw(
+                title="Trivia Night",
+                venue_name=f"Buck and Honey's, {town}",
+                source_url=f"https://isthmus.com/e/buck-{i}",
+            )],
+            db,
+        )
+    assert db.query(Event).count() == len(towns)
+
+
+def test_same_brewery_different_towns_stay_separate(db):
+    # Hop Garden runs taprooms in Belleville and Evansville. Stripping the city
+    # suffix must not collapse two real venues into one.
+    ingest_events(
+        "Isthmus",
+        [_raw(title="Live Music", venue_name="Hop Garden, Belleville")],
+        db,
+    )
+    ingest_events(
+        "Isthmus",
+        [_raw(
+            title="Live Music",
+            venue_name="Hop Garden Brewing & Tap Room, Evansville",
+            source_url="https://isthmus.com/events/live-music-evansville/",
+        )],
+        db,
+    )
+    assert db.query(Event).count() == 2
+
+
+def test_identical_titles_at_different_venues_stay_separate(db):
+    # Twenty bars run "Trivia" at 7pm on the same night. The time anchor is
+    # shared, so only the venue key keeps them apart.
+    venues = ["Cardinal Bar", "Echo Tap", "Java Cat", "Brass Ring, The", "Karben4 Brewing"]
+    for i, v in enumerate(venues):
+        ingest_events(
+            "Isthmus",
+            [_raw(title="Trivia", venue_name=v, source_url=f"https://isthmus.com/e/{i}")],
+            db,
+        )
+    assert db.query(Event).count() == len(venues)
+
+
+# ---------------------------------------------------------------------------
 # 9. Source-priority overwrite (#114): higher-trust source overwrites fields
 #    set by a lower-trust source; lower-trust source cannot overwrite back.
 # ---------------------------------------------------------------------------
