@@ -4,7 +4,7 @@ import pytest
 
 from app import canonical_venues
 from app.geocoding import geocode_event, normalize_lookup
-from app.models import Event
+from app.models import Event, VenueGeocode
 
 
 def _event(**overrides) -> Event:
@@ -121,6 +121,133 @@ def test_canonical_venue_with_no_coords_uses_registry_not_nominatim(db, monkeypa
     assert geocode_event(event, db) is True
     canonical = canonical_venues.lookup("High Noon Saloon")
     assert (event.latitude, event.longitude) == (canonical.latitude, canonical.longitude)
+
+
+# ---------------------------------------------------------------------------
+# Venue-name fallback (#247). Some sources ship an address OpenStreetMap has no
+# node for while carrying the venue under its name — Isthmus's "5950 golf course
+# road, spring green" misses where "American Players Theatre, Spring Green"
+# resolves. geocode_event used to build one key and give up.
+#
+# NOTE: conftest truncates events but NOT venue_geocodes, so cache rows survive
+# between tests in a session. Each test below uses a distinct venue so one
+# test's cached result can't satisfy another's lookup.
+# ---------------------------------------------------------------------------
+
+def _nominatim_stub(resolving: dict, seen: list):
+    """Stub _call_nominatim: resolve only the keys in `resolving`, recording each."""
+    def _call(lookup_key):
+        seen.append(lookup_key)
+        if lookup_key in resolving:
+            lat, lng = resolving[lookup_key]
+            return "success", {"lat": str(lat), "lon": str(lng), "display_name": "stub"}
+        return "not_found", None
+    return _call
+
+
+def test_address_miss_falls_back_to_venue_name(db, monkeypatch):
+    venue, address = "Fallback Playhouse, Spring Green", "1 Nonexistent Rd, Spring Green, WI"
+    addr_key = normalize_lookup(venue, address)
+    name_key = normalize_lookup(venue, None)
+    assert addr_key != name_key
+
+    event = _event(canonical_hash="h-247-a", venue_name=venue, venue_address=address)
+    db.add(event)
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr(
+        "app.geocoding._call_nominatim", _nominatim_stub({name_key: (43.1432, -90.0396)}, seen)
+    )
+
+    assert geocode_event(event, db) is True
+    assert (event.latitude, event.longitude) == (43.1432, -90.0396)
+    # Address first, then the name — order matters, the address is more precise.
+    assert seen == [addr_key, name_key]
+
+    # Both keys cache, so the second lookup costs one request per venue, not per event.
+    cached = {
+        r.lookup_key: r.status
+        for r in db.query(VenueGeocode).filter(VenueGeocode.lookup_key.in_([addr_key, name_key]))
+    }
+    assert cached == {addr_key: "not_found", name_key: "success"}
+
+
+def test_address_hit_never_queries_the_venue_name(db, monkeypatch):
+    venue, address = "Resolvable Hall, Verona", "500 Real St, Verona, WI"
+    addr_key = normalize_lookup(venue, address)
+
+    event = _event(canonical_hash="h-247-b", venue_name=venue, venue_address=address)
+    db.add(event)
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr(
+        "app.geocoding._call_nominatim", _nominatim_stub({addr_key: (43.0, -89.5)}, seen)
+    )
+
+    assert geocode_event(event, db) is True
+    # The fallback must cost nothing on the happy path.
+    assert seen == [addr_key]
+
+
+def test_event_without_a_venue_name_has_nothing_to_fall_back_to(db, monkeypatch):
+    address = "77 Unmatched Ave, Fitchburg, WI"
+    addr_key = normalize_lookup(None, address)
+
+    event = _event(canonical_hash="h-247-c", venue_name=None, venue_address=address)
+    db.add(event)
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr("app.geocoding._call_nominatim", _nominatim_stub({}, seen))
+
+    assert geocode_event(event, db) is False
+    assert seen == [addr_key]
+
+
+def test_name_only_event_does_not_issue_a_duplicate_lookup(db, monkeypatch):
+    # With no address the primary key is already the name-only form, so the
+    # fallback would re-query the identical key without the inequality guard.
+    venue = "Nameless Address Tavern, Monona"
+    name_key = normalize_lookup(venue, None)
+
+    event = _event(canonical_hash="h-247-d", venue_name=venue, venue_address=None)
+    db.add(event)
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr("app.geocoding._call_nominatim", _nominatim_stub({}, seen))
+
+    assert geocode_event(event, db) is False
+    assert seen == [name_key]
+
+
+def test_both_keys_missing_are_cached_so_neither_is_retried(db, monkeypatch):
+    venue, address = "Doubly Unknown Cidery, Middleton", "2 Missing Way, Middleton, WI"
+    addr_key = normalize_lookup(venue, address)
+    name_key = normalize_lookup(venue, None)
+
+    event = _event(canonical_hash="h-247-e", venue_name=venue, venue_address=address)
+    db.add(event)
+    db.commit()
+
+    seen: list[str] = []
+    monkeypatch.setattr("app.geocoding._call_nominatim", _nominatim_stub({}, seen))
+
+    assert geocode_event(event, db) is False
+    assert seen == [addr_key, name_key]
+
+    statuses = {
+        r.lookup_key: r.status
+        for r in db.query(VenueGeocode).filter(VenueGeocode.lookup_key.in_([addr_key, name_key]))
+    }
+    assert statuses == {addr_key: "not_found", name_key: "not_found"}
+
+    # A second pass must hit the cache, not the network.
+    seen.clear()
+    assert geocode_event(event, db) is False
+    assert seen == []
 
 
 def test_non_canonical_venue_falls_through_to_nominatim_path(db, monkeypatch):

@@ -150,9 +150,17 @@ def geocode_lookup(lookup_key: str, db: Session) -> Optional[tuple[float, float]
 def geocode_event(event: Event, db: Session) -> bool:
     """Set event.latitude/longitude from canonical registry, cache, or Nominatim.
 
+    Resolution order is canonical registry → address key → venue-name key.
     Returns True if coordinates were changed. Canonical registry hits short-
     circuit ahead of any cache or network lookup so listed venues are immune
     to upstream address malformations (see #115).
+
+    The venue-name step is a fallback, not a reordering — a street address is
+    more precise, so it stays preferred and the name is only tried when the
+    address resolved to nothing. Some sources ship addresses OpenStreetMap has
+    no node for while carrying the venue under its name: Isthmus's
+    "5950 golf course road, spring green" misses where "American Players
+    Theatre, Spring Green" resolves (#247).
     """
     canonical = canonical_venues.lookup(event.venue_name)
     if canonical is not None:
@@ -167,6 +175,15 @@ def geocode_event(event: Event, db: Session) -> bool:
     if key is None:
         return False
     coords = geocode_lookup(key, db)
+    if coords is None:
+        # Passing venue_address=None forces the venue-name form of the key, so
+        # the city-suffix parsing from #236 applies here too. The inequality
+        # guard skips a redundant second lookup when the address was absent and
+        # `key` is already the name-only form. Both keys cache independently, so
+        # the extra request costs one call per venue, not one per event.
+        fallback_key = normalize_lookup(event.venue_name, None)
+        if fallback_key is not None and fallback_key != key:
+            coords = geocode_lookup(fallback_key, db)
     if coords is None:
         return False
     event.latitude, event.longitude = coords
