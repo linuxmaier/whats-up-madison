@@ -364,6 +364,92 @@ def test_accent_variants_still_merge(db):
 
 
 # ---------------------------------------------------------------------------
+# 4d. Headliner-segment match (#243). Cross-source duplicates routinely agree on
+#     the act and disagree on everything after it — Isthmus lists the full bill,
+#     Ticketmaster lists the tour. Those score 0.32-0.52, far below any threshold
+#     it would be safe to set (#236 measured that lowering the bar far enough
+#     also merges distinct APT plays). Each case below is a real production pair.
+# ---------------------------------------------------------------------------
+
+def _pair_merges(db, title_a, title_b, venue="The Sylvee"):
+    """Ingest two titles at the same slot from different sources; count Events."""
+    db.query(EventSource).delete()
+    db.query(Event).delete()
+    db.commit()
+    ingest_events("Isthmus", [_raw(title=title_a, venue_name=venue)], db)
+    ingest_events(
+        "Ticketmaster",
+        [_raw(title=title_b, venue_name=venue, source_url="https://tm.example/1")],
+        db,
+    )
+    return db.query(Event).count()
+
+
+def test_headliner_match_merges_bill_vs_tour_listings(db):
+    # Isthmus lists the support act, Ticketmaster lists the tour name. 0.51.
+    assert _pair_merges(
+        db, "Max McNown, Sam Burchfield", "Max McNown - The Summer Vacation Tour"
+    ) == 1
+    # Reverse order — source priority determines ingest order in production.
+    assert _pair_merges(
+        db, "Max McNown - The Summer Vacation Tour", "Max McNown, Sam Burchfield"
+    ) == 1
+
+
+def test_headliner_match_strips_a_status_prefix(db):
+    # "SOLD OUT:" would otherwise become the headliner. 0.33.
+    assert _pair_merges(
+        db, "SOLD OUT: Big Thief", "Big Thief: Somersault Slide 360 Tour"
+    ) == 1
+
+
+def test_headliner_match_allows_prefix_containment(db):
+    # Not equality — "bit brigade" is a prefix of "bit brigade performs ...". 0.39.
+    assert _pair_merges(
+        db,
+        "Bit Brigade, Lords of the Trident",
+        "Bit Brigade Performs “Mega Man X” LIVE",
+        venue="Majestic Theatre",
+    ) == 1
+
+
+def test_headliner_match_merges_across_aggregators(db):
+    # Isthmus vs Our Lives for the same Overture show. 0.41.
+    assert _pair_merges(
+        db,
+        "Trevor: The Musical",
+        "TREVOR: The story that inspired The Trevor Project",
+        venue="Overture Center for the Arts",
+    ) == 1
+
+
+def test_headliner_match_merges_multi_act_bills(db):
+    assert _pair_merges(
+        db, "The Crane Wives, Brye", "The Crane Wives - ACT III With special guest Brye"
+    ) == 1
+    assert _pair_merges(
+        db,
+        "Shlump + Tiedye Ky",
+        "Shlump, Tiedye Ky, C.A.M, Brainable, Debbie Check",
+        venue="Majestic Theatre",
+    ) == 1
+
+
+def test_headliner_match_does_not_merge_distinct_events(db):
+    # The negative set established by #236 and #246. A headliner match must not
+    # reach any of these — it only ever ADDS merges, so a regression here would
+    # mean the rule is too loose rather than too tight.
+    for a, b, venue in [
+        ("The Chairs", "The Matchmaker", "American Players Theatre, Spring Green"),
+        ("Uncle Vanya", "Casey and Diana", "American Players Theatre, Spring Green"),
+        ("Friday Open Stage", "First Friday Open Mic", "Madison Senior Center"),
+        ("HASfit - Gentle Exercise", "Bridge Belles", "Madison Senior Center"),
+        ("Concert in the Park", "Totally Different Event", "Garner Park"),
+    ]:
+        assert _pair_merges(db, a, b, venue=venue) == 2, f"{a!r} wrongly merged with {b!r}"
+
+
+# ---------------------------------------------------------------------------
 # 5. Staleness: event removed from a run → EventSource inactive, Event removed
 # ---------------------------------------------------------------------------
 

@@ -41,6 +41,24 @@ _TITLE_STOPWORDS = frozenset({
 })
 _TITLE_WORD_RE = re.compile(r"[a-z0-9']+")
 
+# Headliner extraction (#243). Cross-source duplicates routinely agree on the
+# act and disagree on everything after it — Isthmus lists the full bill
+# ("Max McNown, Sam Burchfield") where Ticketmaster lists the tour
+# ("Max McNown - The Summer Vacation Tour"). Those score 0.51, far below any
+# threshold that would be safe to set: #236 measured that lowering the bar far
+# enough to catch them also merges two different APT plays in the same slot.
+_STATUS_PREFIX_RE = re.compile(
+    r"^(?:sold out|canceled|cancelled|postponed|free|rescheduled)\s*[:\-]\s*"
+)
+# Separators between the headliner and whatever follows it. The spaced forms of
+# the dashes matter — an unspaced hyphen is usually inside a name
+# ("Teeny-Tiny Terrace Trot"), not a separator.
+_HEADLINER_SPLIT_RE = re.compile(
+    r"\s+[-–—+|/]\s+|[,:;]\s+|\s+(?:with|w/|feat\.?|featuring|presents)\s+"
+)
+# Below this, a headliner is too generic to carry a merge on its own.
+_MIN_HEADLINER_LEN = 5
+
 
 def ingest_chunk(
     source_name: str,
@@ -327,6 +345,36 @@ def _shares_significant_token(title_a: str, title_b: str) -> bool:
     return bool(tokens_a & tokens_b)
 
 
+def _headliner(normalized_title: str) -> str:
+    """The leading act/show segment of an already-normalized title.
+
+    Takes the normalized form so it inherits the "&"->"and" collapse, the
+    trailing-city strip and the leading-article strip for free.
+    """
+    s = _STATUS_PREFIX_RE.sub("", normalized_title)
+    return _HEADLINER_SPLIT_RE.split(s, maxsplit=1)[0].strip()
+
+
+def _headliner_match(title_a: str, title_b: str) -> bool:
+    """Whether two normalized titles lead with the same act or show.
+
+    Equality, or word-boundary prefix containment so "bit brigade" matches
+    "bit brigade performs mega man x live". The length floor keeps a very short
+    leading token from carrying a merge by itself.
+
+    Only consulted when the similarity score already fell short, and only after
+    the shared-significant-token guard has had its say, so this can add merges
+    but never create one the #246 guard would have rejected.
+    """
+    head_a, head_b = _headliner(title_a), _headliner(title_b)
+    if len(head_a) < _MIN_HEADLINER_LEN or len(head_b) < _MIN_HEADLINER_LEN:
+        return False
+    if head_a == head_b:
+        return True
+    longer, shorter = (head_a, head_b) if len(head_a) >= len(head_b) else (head_b, head_a)
+    return longer.startswith(shorter + " ")
+
+
 def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
     """Return an existing Event that is likely the same real-world event as raw.
 
@@ -362,6 +410,7 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
     raw_title = _normalize_title_for_match(raw.title)
     best: "Event | None" = None
     best_ratio = 0.0
+    best_by_headliner = False
     for event in candidates:
         cand_title = _normalize_title_for_match(event.title)
         ratio = SequenceMatcher(None, raw_title, cand_title).ratio()
@@ -378,12 +427,26 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
         # least one meaningful word in common before the score counts (#246).
         if not _shares_significant_token(raw_title, cand_title):
             continue
+        # Sources routinely agree on the act and disagree on everything after
+        # it — "Max McNown, Sam Burchfield" vs "Max McNown - The Summer Vacation
+        # Tour" is one show at 0.51. Promote a shared headliner to the
+        # threshold rather than lowering the threshold itself, which #236
+        # measured would merge distinct APT plays (#243).
+        if ratio < FUZZY_TITLE_THRESHOLD and _headliner_match(raw_title, cand_title):
+            ratio = FUZZY_TITLE_THRESHOLD
+            headliner_matched = True
+        else:
+            headliner_matched = False
         if ratio > best_ratio:
             best_ratio, best = ratio, event
+            best_by_headliner = headliner_matched
 
     if best_ratio >= FUZZY_TITLE_THRESHOLD:
         logger.debug(
-            "Fuzzy match (%.2f): '%s' → '%s'", best_ratio, raw.title, best.title
+            "Fuzzy match (%s): '%s' → '%s'",
+            "headliner" if best_by_headliner else f"{best_ratio:.2f}",
+            raw.title,
+            best.title,
         )
         return best
     return None
