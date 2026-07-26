@@ -382,23 +382,36 @@ def _find_fuzzy_duplicate(
     candidates, return the best (event, ratio, was_headliner_match) whose
     venue and title clear FUZZY_TITLE_THRESHOLD, or None.
 
+    Requires a venue anchor — with no venue, title similarity is the only
+    signal left, and #258 measured that's not enough: "Waunakee Farmers'
+    Market" and "Monroe Farmers' Market" cleared the #246 significant-token
+    guard on the shared words "farmers"/"market" and scored 0.78 with nothing
+    else to catch the mismatch, silently merging two different real-world
+    markets. A production sweep found 10 more pairs like it (recurring
+    farmers' markets, folk festivals, "Volunteer with X" civic listings
+    promoted by the #243 headliner rule on the shared prefix "volunteer
+    with") against only one plausible loss (a listing matching its own
+    "CANCELED:"-prefixed re-post) — a 10:1 margin in favor of requiring the
+    anchor outright, consistent with #246's principle that a wrong merge is
+    worse than a visible duplicate.
+
     Extracted from _fuzzy_find_event (#245) so it can be shared with
     reconcile_duplicate_events, which compares two already-persisted Event
     rows rather than a fresh RawEvent against the DB. Keeping one
     implementation means the two callers can't silently drift apart, which is
-    exactly the class of bug (#236/#243/#246) this matcher has repeatedly had
-    to have fixed.
+    exactly the class of bug (#236/#243/#246/#258) this matcher has
+    repeatedly had to have fixed.
     """
     raw_venue = canonical_venues.match_key(venue_name)
-    has_venue = bool(raw_venue)
+    if not raw_venue:
+        return None
 
     # The venue anchor can't be a SQL predicate: venues_match compares
     # normalized base names and treats an absent city suffix as compatible with
     # a known one, which SQL equality can't express (#236).
-    if has_venue:
-        candidates = [
-            e for e in candidates if canonical_venues.venues_match(venue_name, e.venue_name)
-        ]
+    candidates = [
+        e for e in candidates if canonical_venues.venues_match(venue_name, e.venue_name)
+    ]
     if not candidates:
         return None
 
@@ -445,13 +458,15 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
     """Return an existing Event that is likely the same real-world event as raw.
 
     Requires a strong time anchor (exact start_at for timed events, or same
-    date + exact venue for all-day events) plus title similarity ≥ threshold.
+    date for all-day events) plus a venue anchor and title similarity ≥
+    threshold — see _find_fuzzy_duplicate for why the venue anchor is
+    mandatory (#258).
     """
     raw_venue = canonical_venues.match_key(raw.venue_name)
-    has_venue = bool(raw_venue)
-
-    # All-day events with no venue have no reliable anchor — skip to avoid false positives.
-    if raw.all_day and not has_venue:
+    if not raw_venue:
+        # _find_fuzzy_duplicate rejects every candidate without a venue
+        # anchor anyway (#258) — skip the query entirely rather than pay for
+        # a lookup that can't produce a match.
         return None
 
     q = db.query(Event).filter(Event.status != "removed")
