@@ -1,6 +1,7 @@
+import uuid
 from datetime import datetime, timezone
 
-from app.ingest import ingest_events
+from app.ingest import ingest_events, reconcile_duplicate_events
 from app.models import Event, EventSource
 from app.scrapers.base import RawEvent
 
@@ -1211,3 +1212,213 @@ def test_alliant_subroom_alias_normalizes_for_dedup(db):
     # Both sources are attached.
     source_names = {s.source_name for s in db.query(EventSource).all()}
     assert source_names == {"Isthmus", "Alliant Energy Center"}
+
+
+# ---------------------------------------------------------------------------
+# 31. Reconciling pre-existing duplicate rows (#245)
+#
+# ingest_events() already prevents two live rows for the same event from
+# being created going forward, so these tests build the "already duplicated"
+# state directly — two Event rows + their EventSource rows — mirroring what
+# production actually looked like (the Great Gatsby / Overture Center pair
+# from #245: same start_at + venue, substring titles, created minutes apart
+# under code that has since been fixed, but never re-checked against each
+# other since).
+# ---------------------------------------------------------------------------
+
+def _make_event(
+    db,
+    *,
+    title,
+    start_at,
+    venue_name=None,
+    description=None,
+    venue_address=None,
+    categories=None,
+    all_day=False,
+    created_at=None,
+    status="active",
+) -> Event:
+    event = Event(
+        title=title,
+        description=description,
+        start_at=start_at,
+        venue_name=venue_name,
+        venue_address=venue_address,
+        categories=categories or [],
+        all_day=all_day,
+        canonical_hash=uuid.uuid4().hex,
+        status=status,
+    )
+    if created_at is not None:
+        event.created_at = created_at
+    db.add(event)
+    db.flush()
+    return event
+
+
+def _make_source(
+    db, event, source_name, *, source_url=None, is_active=True, last_seen_at=None
+) -> EventSource:
+    source = EventSource(
+        event_id=event.id,
+        source_name=source_name,
+        source_url=source_url or f"https://example.com/{source_name.lower().replace(' ', '-')}",
+        last_seen_at=last_seen_at or _dt(),
+        is_active=is_active,
+    )
+    db.add(source)
+    db.flush()
+    return source
+
+
+def test_reconcile_dry_run_reports_without_writing(db):
+    a = _make_event(
+        db, title="The Great Gatsby", start_at=_dt(), venue_name="Overture Center for the Arts",
+        created_at=datetime(2026, 6, 28, 13, 41, tzinfo=timezone.utc),
+    )
+    _make_source(db, a, "Isthmus")
+    _make_source(db, a, "Visit Madison")
+
+    b = _make_event(
+        db, title="The Great Gatsby (Touring)", start_at=_dt(), venue_name="Overture Center for the Arts",
+        created_at=datetime(2026, 6, 28, 13, 33, tzinfo=timezone.utc),
+    )
+    _make_source(db, b, "Ticketmaster")
+    db.commit()  # mimic already-persisted rows from an earlier scrape run
+
+    stats = reconcile_duplicate_events(db, dry_run=True)
+
+    assert stats["merges"] == 1
+    assert stats["dry_run"] is True
+    # Nothing committed — both rows are still active, independently sourced.
+    assert db.query(Event).filter(Event.status == "active").count() == 2
+    assert db.query(EventSource).count() == 3
+
+
+def test_reconcile_merges_duplicate_pair_with_different_sources(db):
+    a = _make_event(
+        db, title="The Great Gatsby", start_at=_dt(), venue_name="Overture Center for the Arts",
+        created_at=datetime(2026, 6, 28, 13, 41, tzinfo=timezone.utc),
+    )
+    _make_source(db, a, "Isthmus")
+    _make_source(db, a, "Visit Madison")
+
+    b = _make_event(
+        db, title="The Great Gatsby (Touring)", start_at=_dt(), venue_name="Overture Center for the Arts",
+        created_at=datetime(2026, 6, 28, 13, 33, tzinfo=timezone.utc),
+    )
+    _make_source(db, b, "Ticketmaster")
+
+    stats = reconcile_duplicate_events(db, dry_run=False)
+    assert stats["merges"] == 1
+
+    active = db.query(Event).filter(Event.status == "active").all()
+    assert len(active) == 1
+    survivor = active[0]
+    active_sources = db.query(EventSource).filter_by(event_id=survivor.id, is_active=True).all()
+    assert {s.source_name for s in active_sources} == {"Isthmus", "Visit Madison", "Ticketmaster"}
+
+    removed = db.query(Event).filter(Event.status == "removed").one()
+    assert db.query(EventSource).filter_by(event_id=removed.id).count() == 0
+
+
+def test_reconcile_handles_overlapping_source_on_both_sides(db):
+    # Both rows carry an Isthmus link (the actual shape of the #245 Great
+    # Gatsby pair) — merging must not violate the (event_id, source_name)
+    # unique constraint, and the fresher/active reading should survive.
+    a = _make_event(
+        db, title="The Great Gatsby", start_at=_dt(), venue_name="Overture Center for the Arts",
+        created_at=datetime(2026, 6, 28, 13, 41, tzinfo=timezone.utc),
+    )
+    _make_source(db, a, "Isthmus", is_active=True, last_seen_at=datetime(2026, 7, 25, 20, 37, tzinfo=timezone.utc))
+    _make_source(db, a, "Visit Madison")
+
+    b = _make_event(
+        db, title="The Great Gatsby (Touring)", start_at=_dt(), venue_name="Overture Center for the Arts",
+        created_at=datetime(2026, 6, 28, 13, 33, tzinfo=timezone.utc),
+    )
+    _make_source(
+        db, b, "Isthmus", is_active=False,
+        last_seen_at=datetime(2026, 6, 28, 13, 33, tzinfo=timezone.utc),
+        source_url="https://isthmus.com/events/stale-occurrence/",
+    )
+    _make_source(db, b, "Ticketmaster")
+
+    stats = reconcile_duplicate_events(db, dry_run=False)
+    assert stats["merges"] == 1
+
+    survivor = db.query(Event).filter(Event.status == "active").one()
+    isthmus_rows = db.query(EventSource).filter_by(event_id=survivor.id, source_name="Isthmus").all()
+    assert len(isthmus_rows) == 1
+    assert isthmus_rows[0].is_active is True
+
+    all_names = {s.source_name for s in db.query(EventSource).filter_by(event_id=survivor.id).all()}
+    assert all_names == {"Isthmus", "Visit Madison", "Ticketmaster"}
+
+
+def test_reconcile_leaves_distinct_events_alone(db):
+    # Reuses the #246 shape: two different APT plays sharing only "the ".
+    a = _make_event(
+        db, title="The Chairs", start_at=_dt(), venue_name="American Players Theatre, Spring Green",
+        created_at=datetime(2026, 6, 25, tzinfo=timezone.utc),
+    )
+    _make_source(db, a, "Isthmus")
+
+    b = _make_event(
+        db, title="The Matchmaker", start_at=_dt(), venue_name="American Players Theatre, Spring Green",
+        created_at=datetime(2026, 6, 26, tzinfo=timezone.utc),
+    )
+    _make_source(db, b, "Isthmus", source_url="https://isthmus.com/events/the-matchmaker/")
+
+    stats = reconcile_duplicate_events(db, dry_run=False)
+
+    assert stats["merges"] == 0
+    assert db.query(Event).filter(Event.status == "active").count() == 2
+
+
+def test_reconcile_null_fills_survivor_and_unions_categories(db):
+    winner = _make_event(
+        db, title="Trivia Night", start_at=_dt(), venue_name="Test Venue",
+        categories=["Nightlife"],
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    _make_source(db, winner, "Ticketmaster")  # rank 3 — higher trust than Isthmus
+
+    loser = _make_event(
+        db, title="Trivia Nights", start_at=_dt(), venue_name="Test Venue",
+        description="Weekly trivia at the bar.", venue_address="123 Main St",
+        categories=["Community"],
+        created_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+    )
+    _make_source(db, loser, "Isthmus", source_url="https://isthmus.com/events/trivia-night/")
+
+    stats = reconcile_duplicate_events(db, dry_run=False)
+    assert stats["merges"] == 1
+
+    survivor = db.query(Event).filter(Event.status == "active").one()
+    # Winner's own non-null fields are untouched; nulls are filled from the loser.
+    assert survivor.title == "Trivia Night"
+    assert survivor.description == "Weekly trivia at the bar."
+    assert survivor.venue_address == "123 Main St"
+    assert set(survivor.categories) == {"Nightlife", "Community"}
+
+
+def test_reconcile_is_idempotent(db):
+    a = _make_event(
+        db, title="Trivia Night", start_at=_dt(), venue_name="Test Venue",
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    _make_source(db, a, "Isthmus")
+
+    b = _make_event(
+        db, title="Trivia Nights", start_at=_dt(), venue_name="Test Venue",
+        created_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+    )
+    _make_source(db, b, "Visit Madison", source_url="https://visitmadison.com/event/trivia-night/")
+
+    first = reconcile_duplicate_events(db, dry_run=False)
+    assert first["merges"] == 1
+
+    second = reconcile_duplicate_events(db, dry_run=False)
+    assert second["merges"] == 0

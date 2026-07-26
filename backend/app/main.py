@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import Base, engine, get_db
 from app.models import Event, EventSource
 from app.geocode_runner import geocode_all_missing, geocode_missing_for_source
-from app.ingest import finalize_source_run, ingest_chunk
+from app.ingest import finalize_source_run, ingest_chunk, reconcile_duplicate_events
 from app.routers import events
 from app.schemas import FeedbackRequest
 from app.scrapers.alliant import AlliantEnergyCenterSource
@@ -61,6 +61,11 @@ logger = logging.getLogger(__name__)
 
 # Serializes /admin/geocode so two passes can't corrupt each other's cache rows.
 _geocode_lock = threading.Lock()
+
+# Serializes /admin/reconcile-duplicates for the same reason — it's a
+# write-heavy pass over the same `events` table a concurrent scrape could
+# also be touching.
+_reconcile_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -283,3 +288,23 @@ def trigger_geocode(force: bool = False, _: None = Depends(require_admin_key), d
         raise HTTPException(status_code=500, detail=f"Geocode run failed: {e}") from e
     finally:
         _geocode_lock.release()
+
+
+@app.post("/admin/reconcile-duplicates")
+def trigger_reconcile_duplicates(
+    dry_run: bool = True, _: None = Depends(require_admin_key), db: Session = Depends(get_db)
+):
+    # Fuzzy matching only runs at insert time, when a fresh raw's
+    # canonical_hash misses. Two Event rows that end up sharing an anchor
+    # after the fact (venue-matching fixes shipped after they were created,
+    # or _OVERWRITABLE_FIELDS drift) never get re-checked against each other
+    # on their own — this is the manual sweep that does (#245).
+    if not _reconcile_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A reconcile run is already in progress")
+    try:
+        return reconcile_duplicate_events(db, dry_run=dry_run)
+    except Exception as e:
+        logger.exception("Reconcile-duplicates run failed")
+        raise HTTPException(status_code=500, detail=f"Reconcile run failed: {e}") from e
+    finally:
+        _reconcile_lock.release()

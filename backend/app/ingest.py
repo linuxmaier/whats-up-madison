@@ -1,6 +1,7 @@
 import logging
 import re
 import unicodedata
+from collections import defaultdict
 from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
@@ -375,39 +376,34 @@ def _headliner_match(title_a: str, title_b: str) -> bool:
     return longer.startswith(shorter + " ")
 
 
-def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
-    """Return an existing Event that is likely the same real-world event as raw.
+def _find_fuzzy_duplicate(
+    candidates: list[Event], title: str, venue_name: "str | None"
+) -> "tuple[Event, float, bool] | None":
+    """Python-side half of fuzzy matching: given a set of time-anchored
+    candidates, return the best (event, ratio, was_headliner_match) whose
+    venue and title clear FUZZY_TITLE_THRESHOLD, or None.
 
-    Requires a strong time anchor (exact start_at for timed events, or same
-    date + exact venue for all-day events) plus title similarity ≥ threshold.
+    Extracted from _fuzzy_find_event (#245) so it can be shared with
+    reconcile_duplicate_events, which compares two already-persisted Event
+    rows rather than a fresh RawEvent against the DB. Keeping one
+    implementation means the two callers can't silently drift apart, which is
+    exactly the class of bug (#236/#243/#246) this matcher has repeatedly had
+    to have fixed.
     """
-    raw_venue = canonical_venues.match_key(raw.venue_name)
+    raw_venue = canonical_venues.match_key(venue_name)
     has_venue = bool(raw_venue)
 
-    # All-day events with no venue have no reliable anchor — skip to avoid false positives.
-    if raw.all_day and not has_venue:
-        return None
-
-    q = db.query(Event).filter(Event.status != "removed")
-    if raw.all_day:
-        q = q.filter(cast(Event.start_at, SQLDate) == raw.start_at.date())
-    else:
-        q = q.filter(Event.start_at == raw.start_at)
-
-    candidates = q.all()
-    # The venue anchor can't be a SQL predicate any more: venues_match compares
+    # The venue anchor can't be a SQL predicate: venues_match compares
     # normalized base names and treats an absent city suffix as compatible with
-    # a known one, which SQL equality can't express (#236). Candidates are
-    # narrowed by the time anchor in SQL, which keeps the fetched set small,
-    # then filtered on the venue here.
+    # a known one, which SQL equality can't express (#236).
     if has_venue:
         candidates = [
-            e for e in candidates if canonical_venues.venues_match(raw.venue_name, e.venue_name)
+            e for e in candidates if canonical_venues.venues_match(venue_name, e.venue_name)
         ]
     if not candidates:
         return None
 
-    raw_title = _normalize_title_for_match(raw.title)
+    raw_title = _normalize_title_for_match(title)
     best: "Event | None" = None
     best_ratio = 0.0
     best_by_headliner = False
@@ -442,14 +438,41 @@ def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
             best_by_headliner = headliner_matched
 
     if best_ratio >= FUZZY_TITLE_THRESHOLD:
-        logger.debug(
-            "Fuzzy match (%s): '%s' → '%s'",
-            "headliner" if best_by_headliner else f"{best_ratio:.2f}",
-            raw.title,
-            best.title,
-        )
-        return best
+        return best, best_ratio, best_by_headliner
     return None
+
+
+def _fuzzy_find_event(raw: RawEvent, db: Session) -> "Event | None":
+    """Return an existing Event that is likely the same real-world event as raw.
+
+    Requires a strong time anchor (exact start_at for timed events, or same
+    date + exact venue for all-day events) plus title similarity ≥ threshold.
+    """
+    raw_venue = canonical_venues.match_key(raw.venue_name)
+    has_venue = bool(raw_venue)
+
+    # All-day events with no venue have no reliable anchor — skip to avoid false positives.
+    if raw.all_day and not has_venue:
+        return None
+
+    q = db.query(Event).filter(Event.status != "removed")
+    if raw.all_day:
+        q = q.filter(cast(Event.start_at, SQLDate) == raw.start_at.date())
+    else:
+        q = q.filter(Event.start_at == raw.start_at)
+
+    candidates = q.all()
+    match = _find_fuzzy_duplicate(candidates, raw.title, raw.venue_name)
+    if match is None:
+        return None
+    best, best_ratio, best_by_headliner = match
+    logger.debug(
+        "Fuzzy match (%s): '%s' → '%s'",
+        "headliner" if best_by_headliner else f"{best_ratio:.2f}",
+        raw.title,
+        best.title,
+    )
+    return best
 
 
 def _source_rank(source_name: str) -> int:
@@ -493,3 +516,146 @@ def _dedupe_by_hash(raw_events: list[RawEvent]) -> list[RawEvent]:
                 if c not in kept.categories:
                     kept.categories.append(c)
     return list(seen.values())
+
+
+def _pick_survivor(a: Event, b: Event, db: Session) -> tuple[Event, Event]:
+    """Return (survivor, loser) for two events found to be duplicates.
+
+    Higher source-trust rank wins (mirrors the priority ordering ingest_chunk
+    already applies to raw-vs-event merges); ties broken by earlier
+    created_at so the more established row survives.
+    """
+    rank_a, rank_b = _best_existing_rank(a, db), _best_existing_rank(b, db)
+    if rank_a != rank_b:
+        return (a, b) if rank_a < rank_b else (b, a)
+    return (a, b) if a.created_at <= b.created_at else (b, a)
+
+
+def _merge_event(survivor: Event, loser: Event, db: Session) -> None:
+    """Fold loser's data into survivor and re-point its EventSource rows.
+
+    Field merge is a one-directional null-fill: survivor is the higher-
+    priority side by construction (see _pick_survivor), so there's no
+    "overwrite" branch here the way ingest_chunk has for a fresh raw — only
+    filling what survivor doesn't already have.
+    """
+    for field in _OVERWRITABLE_FIELDS:
+        if getattr(survivor, field) is None:
+            loser_val = getattr(loser, field)
+            if loser_val is not None:
+                setattr(survivor, field, loser_val)
+
+    if loser.categories:
+        merged = list(survivor.categories or [])
+        for c in loser.categories:
+            if c not in merged:
+                merged.append(c)
+        survivor.categories = merged
+
+    survivor_sources = {s.source_name: s for s in survivor.sources}
+    for source in list(loser.sources):
+        existing = survivor_sources.get(source.source_name)
+        if existing is None:
+            # Assign via the relationship, not the raw event_id column, so
+            # survivor.sources reflects the move in-memory immediately — a
+            # later iteration in the same reconcile group may need to see it
+            # (e.g. a third event in a group merging into this survivor).
+            source.event = survivor
+            survivor_sources[source.source_name] = source
+            continue
+        # Both events already carry a link from this source (e.g. Isthmus on
+        # both sides of the Great Gatsby pair in #245) — keep whichever
+        # reading is more current rather than blindly preferring one row.
+        is_fresher = (source.is_active and not existing.is_active) or (
+            source.is_active == existing.is_active and source.last_seen_at > existing.last_seen_at
+        )
+        if is_fresher:
+            existing.source_url = source.source_url
+            existing.last_seen_at = source.last_seen_at
+            existing.is_active = source.is_active
+        db.delete(source)
+
+    _apply_canonical_address(survivor)
+
+    # Never hard-delete Events (see AGENTS.md) — the loser becomes an inert,
+    # sourceless "removed" row rather than a normal staleness casualty.
+    loser.status = "removed"
+
+
+def reconcile_duplicate_events(db: Session, *, dry_run: bool = True) -> dict:
+    """Re-run fuzzy matching over existing rows and merge survivors (#245).
+
+    _fuzzy_find_event only runs at insert time, when a freshly-scraped raw's
+    canonical_hash misses. Once two Event rows exist for the same real-world
+    event, every later scrape of either source recomputes the same hash it
+    already produced and hits its own row directly — fuzzy matching, and any
+    later fix to it, is never consulted again for that pair. If each row
+    keeps at least one distinct active source, the normal staleness self-heal
+    in finalize_source_run can't save it either, since that only fires when a
+    row's *last* active source goes quiet. This is a manual/on-demand sweep
+    over the whole active table to catch and merge rows that drifted into
+    duplication this way — not part of the regular scrape pipeline, since the
+    drift it cleans up accumulates slowly, not every run.
+
+    Groups events by the same anchor _fuzzy_find_event uses (exact start_at,
+    or date for all-day events), then within each group walks events in
+    created_at order looking for fuzzy duplicates against representatives
+    already seen, exactly mirroring how ingest_chunk would have processed
+    them had they arrived in that order one at a time.
+    """
+    events = (
+        db.query(Event)
+        .filter(Event.status != "removed")
+        .order_by(Event.created_at)
+        .all()
+    )
+
+    groups: dict = defaultdict(list)
+    for e in events:
+        key = e.start_at.date() if e.all_day else e.start_at
+        groups[key].append(e)
+
+    merges = []
+    duplicate_groups = 0
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        representatives: list[Event] = []
+        group_had_merge = False
+        for event in group:
+            match = _find_fuzzy_duplicate(representatives, event.title, event.venue_name)
+            if match is None:
+                representatives.append(event)
+                continue
+            rep, _ratio, _headliner = match
+            survivor, loser = _pick_survivor(rep, event, db)
+            merges.append({
+                "survivor_id": str(survivor.id),
+                "survivor_title": survivor.title,
+                "loser_id": str(loser.id),
+                "loser_title": loser.title,
+                "venue_name": survivor.venue_name,
+                "start_at": survivor.start_at.isoformat(),
+            })
+            _merge_event(survivor, loser, db)
+            db.flush()
+            if survivor is not rep:
+                representatives[representatives.index(rep)] = survivor
+            group_had_merge = True
+        if group_had_merge:
+            duplicate_groups += 1
+
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+
+    stats = {
+        "groups_scanned": len(groups),
+        "duplicate_groups": duplicate_groups,
+        "merges": len(merges),
+        "dry_run": dry_run,
+        "details": merges,
+    }
+    logger.info("Reconcile duplicates: %s", stats)
+    return stats
