@@ -352,6 +352,26 @@ gh workflow run scrape.yml
 
 A stale row left behind by a missed scrape **self-heals** once scraping resumes — the staleness sweep in `finalize_source_run` deactivates the untouched `EventSource` and flips the event to `status='removed'`. No manual cleanup needed. That's why #244's wrong-date row needed no code fix.
 
+### The curl timeout keeps the machine alive (#263)
+
+`--max-time` on the workflow's curl is **not just a client-side report deadline** — it is what holds the Fly machine up for the duration of the run. `backend/fly.toml` sets `auto_stop_machines = 'stop'` with `min_machines_running = 0`, so the CI request is the only thing keeping the machine awake during a scrape. When curl gives up, Fly sees zero in-flight requests and autostops a few minutes later, SIGINT-ing whatever is still running.
+
+#263 hit exactly this. The limit was 1800s (30min), and the run crossed it:
+
+```
+14:57:19  curl gives up, disconnects
+14:59:00  last scraper finishes          <-- 96 seconds of margin
+15:00:36  "excess capacity, autostopping machine" -> SIGINT
+```
+
+The scrape itself succeeded — `last_ingest_at` was 90 seconds *after* the timeout, and the tagging pass completed — so the only visible damage was a red CI job. But the margin was 96 seconds. A slightly longer run gets killed mid-tagging, and since `tag_untagged_events` commits per batch, that produces a **silent partial pass**, not a clean failure.
+
+Set the limit well above the slowest real run, never near it. Measured over 28 successful runs (2026-06-22 → 2026-07-25): median **18.0min**, range **14.1–28.0min**, with no upward trend (first-10 mean 18.1 vs last-10 18.7). The old 1800s sat at roughly the p100 of that distribution, so ordinary variance was enough to trip it. It's now 3600s; GitHub's default job timeout is 6h, so there's room.
+
+If durations ever climb toward the new limit, the better answers are sharding the workflow into per-source `?scraper=` calls (short requests, failures attributable to one source) or making `/admin/scrape` async with a job-status endpoint — not another bump.
+
+**A timed-out scrape job does not mean the data is stale.** Check `/health` `last_ingest_at` against the curl deadline before assuming an ingest was lost; the `freshness` job below is the authority on staleness, and it correctly stays green here because the ingest genuinely landed.
+
 ### Freshness monitoring
 
 Two pieces turn the silent freeze into a loud one:
