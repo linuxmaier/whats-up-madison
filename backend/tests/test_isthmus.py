@@ -211,7 +211,7 @@ class TestParseRssTitle:
 
     def test_title_venue_contains_comma(self):
         # Venues with comma-separated qualifiers (city, state, etc).
-        name, start, end, venue = _parse_rss_title(
+        _, _, _, venue = _parse_rss_title(
             "Sports for Active Seniors Hiking - May 18, 2026 10:00 AM @ Lake Kegonsa State Park, Stoughton"
         )
         assert venue == "Lake Kegonsa State Park, Stoughton"

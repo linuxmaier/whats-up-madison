@@ -1,7 +1,8 @@
 import logging
 import re
 import time
-from datetime import datetime, time as dtime, timedelta
+from datetime import datetime, timedelta
+from datetime import time as dtime
 from urllib.parse import unquote, urljoin
 from zoneinfo import ZoneInfo
 

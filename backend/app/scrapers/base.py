@@ -5,7 +5,6 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -21,10 +20,10 @@ class RawEvent:
     start_at: datetime
     source_name: str
     source_url: str
-    description: Optional[str] = None
-    end_at: Optional[datetime] = None
-    venue_name: Optional[str] = None
-    venue_address: Optional[str] = None
+    description: str | None = None
+    end_at: datetime | None = None
+    venue_name: str | None = None
+    venue_address: str | None = None
     categories: list[str] = field(default_factory=list)
     all_day: bool = False
 

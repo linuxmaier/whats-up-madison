@@ -9,13 +9,13 @@ from app.models import Event, VenueGeocode
 
 
 def _event(**overrides) -> Event:
-    base = dict(
-        title="Pert Near Sandstone",
-        start_at=datetime(2026, 5, 15, 20, 0, tzinfo=timezone.utc),
-        venue_name="High Noon Saloon",
-        canonical_hash="hash-1",
-        status="active",
-    )
+    base = {
+        "title": "Pert Near Sandstone",
+        "start_at": datetime(2026, 5, 15, 20, 0, tzinfo=timezone.utc),
+        "venue_name": "High Noon Saloon",
+        "canonical_hash": "hash-1",
+        "status": "active",
+    }
     base.update(overrides)
     return Event(**base)
 

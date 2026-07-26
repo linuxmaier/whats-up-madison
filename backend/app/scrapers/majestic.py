@@ -1,7 +1,8 @@
 import logging
 import re
 import time
-from datetime import datetime, time as dtime
+from datetime import datetime
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup

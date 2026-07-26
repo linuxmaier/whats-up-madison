@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Cost experimentation eval for the LLM category tagger.
 
@@ -25,14 +24,18 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
-import anthropic  # noqa: E402
-from sqlalchemy import create_engine, func  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+import anthropic
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import Session
 
-from app.categories import CATEGORIES, CATEGORY_DESCRIPTIONS  # noqa: E402
-from app.config import settings  # noqa: E402
-from app.models import Event  # noqa: E402
-from app.tagger import _build_event_payload, _build_tool_spec, _parse_tool_response  # noqa: E402
+from app.categories import CATEGORIES, CATEGORY_DESCRIPTIONS
+from app.config import settings
+from app.models import Event
+from app.tagger import (
+    _build_event_payload,
+    _build_tool_spec,
+    _parse_tool_response,
+)
 
 MODEL_IDS = {
     "haiku": "claude-haiku-4-5",

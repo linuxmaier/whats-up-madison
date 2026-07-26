@@ -1,3 +1,26 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+ignore = [
+    # Per-source/per-event failure isolation is deliberate throughout the
+    # ingest pipeline: one bad scraper or one bad event must not take down
+    # the whole run (see AGENTS.md's ingest/orchestrator docs). ~18 sites,
+    # all boundary catches around scraper fetch(), the geocode/tag passes,
+    # and admin routes.
+    "BLE001",
+    # Every site constructs a naive datetime only to immediately extract a
+    # bare .date()/.time() component and attach the real tzinfo one call
+    # later via datetime.combine()/.replace(tzinfo=...) — see e.g.
+    # app/scrapers/atwood.py's _parse_date. None of these naive
+    # intermediates is ever stored as a final event timestamp.
+    "DTZ001",
+    "DTZ007",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection pattern requires Depends()/Query() as
+# argument defaults — that's how the framework is designed to be used, not a
+# mutable-default bug.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]

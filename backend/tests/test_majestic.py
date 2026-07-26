@@ -1,5 +1,6 @@
 """Unit tests for majestic.py parsing helpers."""
-from datetime import datetime, time as dtime
+from datetime import datetime
+from datetime import time as dtime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 

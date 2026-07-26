@@ -20,8 +20,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Literal, Optional
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
+from typing import Literal
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy.orm import Session
 
@@ -44,7 +44,7 @@ def _strip_occ_dtstart(url: str) -> str:
     return urlunparse(parts._replace(query=urlencode(kept)))
 
 
-def compute_rss_signature(event_name: str, venue_name: Optional[str], rss_description: Optional[str]) -> str:
+def compute_rss_signature(event_name: str, venue_name: str | None, rss_description: str | None) -> str:
     """Hash the RSS-visible fields that should trigger detail-page refresh."""
     blob = "|".join([
         (event_name or "").strip().lower(),
@@ -58,9 +58,9 @@ def get_or_fetch_detail(
     url: str,
     *,
     rss_signature: str,
-    rss_description: Optional[str],
+    rss_description: str | None,
     db: Session,
-) -> tuple[list[str], Optional[str], Optional[str], Literal["hit", "miss"]]:
+) -> tuple[list[str], str | None, str | None, Literal["hit", "miss"]]:
     """Return cached or freshly-extracted (categories, venue_address, description, outcome).
 
     On hit: cached fields returned directly, no HTTP call.
@@ -91,7 +91,7 @@ def get_or_fetch_detail(
     # Mirror the original scraper's logic: only run description enrichment
     # when the RSS description is short. Storing None when not enriched keeps
     # cache rows honest about what the detail page actually contributed.
-    description: Optional[str] = None
+    description: str | None = None
     if len(rss_description or "") < _DESC_MIN_LEN:
         description = _extract_description(soup, url)
 

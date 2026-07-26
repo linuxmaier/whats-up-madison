@@ -11,7 +11,6 @@ from app.scrapers.our_lives import (
     _venue_dict,
 )
 
-
 # ---------------------------------------------------------------------------
 # _venue_dict — Tribe sometimes ships venue as dict, sometimes [], sometimes missing
 # ---------------------------------------------------------------------------

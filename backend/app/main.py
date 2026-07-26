@@ -1,10 +1,8 @@
 import logging
 import logging.config
 import threading
-
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Optional
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -14,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Event, EventSource
 from app.geocode_runner import geocode_all_missing, geocode_missing_for_source
 from app.ingest import finalize_source_run, ingest_chunk, reconcile_duplicate_events
+from app.models import Event, EventSource
 from app.routers import events
 from app.schemas import FeedbackRequest
 from app.scrapers.alliant import AlliantEnergyCenterSource
@@ -72,8 +70,8 @@ _reconcile_lock = threading.Lock()
 async def lifespan(app: FastAPI):
     try:
         Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        logger.exception("Schema creation failed at startup: %s", e)
+    except Exception:
+        logger.exception("Schema creation failed at startup")
         raise
     yield
 
@@ -103,7 +101,7 @@ SCRAPERS = [
 ]
 
 
-def require_admin_key(x_admin_key: Optional[str] = Header(default=None)):
+def require_admin_key(x_admin_key: str | None = Header(default=None)):
     if settings.environment == "development" and not settings.admin_api_key:
         return
     if not x_admin_key or x_admin_key != settings.admin_api_key:
@@ -123,7 +121,7 @@ def health(db: Session = Depends(get_db)):
         payload["active_events"] = (
             db.query(func.count(Event.id)).filter(Event.status == "active").scalar()
         )
-    except Exception as exc:  # noqa: BLE001 - report degradation, don't crash the probe
+    except Exception as exc:
         logger.warning("Health check could not reach the database: %s", exc)
         return {
             "status": "ok",
@@ -201,7 +199,7 @@ def _select_scrapers(names: list[str]) -> list[BaseSource]:
 @app.post("/admin/scrape")
 def trigger_scrape(
     scraper: list[str] = Query(default_factory=list),
-    days: Optional[int] = Query(default=None, ge=1),
+    days: int | None = Query(default=None, ge=1),
     skip_geocode: bool = False,
     skip_tag: bool = False,
     _: None = Depends(require_admin_key),
@@ -264,7 +262,7 @@ def trigger_scrape(
 
 
 @app.post("/admin/tag")
-def trigger_tag(model: str = None, _: None = Depends(require_admin_key), db: Session = Depends(get_db)):
+def trigger_tag(model: str | None = None, _: None = Depends(require_admin_key), db: Session = Depends(get_db)):
     try:
         return tag_untagged_events(db, model=model)
     except Exception as e:
