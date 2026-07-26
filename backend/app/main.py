@@ -23,7 +23,6 @@ from app.scrapers.alliant import AlliantEnergyCenterSource
 from app.scrapers.atwood import AtwoodMusicHallSource
 from app.scrapers.base import BaseSource
 from app.scrapers.city_of_madison import CityOfMadisonSource
-from app.scrapers.dmi import DMISource
 from app.scrapers.high_noon import HighNoonSource
 from app.scrapers.isthmus import IsthmusSource
 from app.scrapers.majestic import MajesticTheatreSource
@@ -91,7 +90,6 @@ SCRAPERS = [
     MajesticTheatreSource(),
     TicketmasterSource(),
     OurLivesSource(),
-    DMISource(),
     WisconsinChamberOrchestraSource(),
     IsthmusSource(),
     VisitMadisonSource(),
