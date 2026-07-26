@@ -451,6 +451,62 @@ def test_headliner_match_does_not_merge_distinct_events(db):
 
 
 # ---------------------------------------------------------------------------
+# 4e. No venue anchor (#258): with no venue, title similarity is the only
+#     signal left, and a production sweep showed that's not enough.
+#     "Waunakee Farmers' Market" and "Monroe Farmers' Market" — two different
+#     real-world markets — cleared the #246 significant-token guard on the
+#     shared words "farmers"/"market" and scored 0.78 with nothing left to
+#     catch the mismatch, silently merging Waunakee's title onto Monroe's
+#     venue and source URL. _find_fuzzy_duplicate now refuses to fuzzy-match
+#     at all when the incoming side has no venue, mirroring the bail the
+#     all-day path already had.
+# ---------------------------------------------------------------------------
+
+def test_no_venue_similar_titles_do_not_merge(db):
+    # Real production pairs (#258) that shared a start_at and cleared
+    # FUZZY_TITLE_THRESHOLD on title similarity alone, with no venue on
+    # either side to catch the mismatch.
+    for a, b in [
+        ("Waunakee Farmers' Market", "Monroe Farmers' Market"),
+        ("Capitol View Farmers' Market", "Verona Farmers' Market"),
+        ("Shawano Folk Festival - Aug 7, 2026", "White Oak Folk Fest - Aug 7, 2026"),
+        ("Art on Main - Aug 7, 2026", "Third Ward Moon Festival - Aug 7, 2026"),
+        # Promoted to threshold by the #243 headliner rule on the shared
+        # prefix "volunteer with" — the rule is meant for touring acts,
+        # which always have a venue, not generic civic listings.
+        ("Volunteer with Southern Wisconsin Bird Alliance", "Volunteer with Friends of Hoyt Park"),
+    ]:
+        assert _pair_merges(db, a, b, venue=None) == 2, f"{a!r} wrongly merged with {b!r}"
+
+
+def test_no_venue_exact_title_still_does_not_merge(db):
+    # The one production pair (#258) that plausibly should have merged —
+    # a listing matching its own "CANCELED:"-prefixed re-post, both with no
+    # venue — now also stays separate. This is an intentional trade-off: a
+    # visible duplicate is safer than the alternative (#246), and it was
+    # outweighed 10:1 by the false merges the venue requirement prevents.
+    assert _pair_merges(
+        db, "AtwoodFest - Jul 25, 2026", "CANCELED: AtwoodFest - Jul 25, 2026", venue=None,
+    ) == 2
+
+
+def test_reconcile_does_not_merge_no_venue_events(db):
+    # The venue requirement applies to reconcile_duplicate_events too, since
+    # it shares _find_fuzzy_duplicate with the insert path (#245) — the
+    # production sweep that surfaced #258 walked existing rows exactly this
+    # way.
+    a = _make_event(db, title="Waunakee Farmers' Market", start_at=_dt())
+    _make_source(db, a, "Isthmus")
+    b = _make_event(db, title="Monroe Farmers' Market", start_at=_dt())
+    _make_source(db, b, "Ticketmaster", source_url="https://tm.example/monroe")
+
+    stats = reconcile_duplicate_events(db, dry_run=False)
+
+    assert stats["merges"] == 0
+    assert db.query(Event).filter_by(status="active").count() == 2
+
+
+# ---------------------------------------------------------------------------
 # 5. Staleness: event removed from a run → EventSource inactive, Event removed
 # ---------------------------------------------------------------------------
 
