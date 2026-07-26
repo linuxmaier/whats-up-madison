@@ -10,7 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger scrape
+        # --max-time must stay well above the slowest real run, not near it. A full
+        # pipeline medians ~18min but has been observed at 28min; at the old 1800s
+        # (30min) limit a normal bad day tripped the wall. Holding the connection
+        # open also keeps the Fly machine alive: backend/fly.toml sets
+        # auto_stop_machines='stop' with min_machines_running=0, so when curl
+        # disconnects this request is the only thing keeping the machine up and Fly
+        # autostops it a few minutes later — potentially SIGINT-ing a run mid-flight.
         run: |
           curl -f -X POST https://whats-up-madison.fly.dev/admin/scrape \
             -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
-            --max-time 1800
+            --max-time 3600
