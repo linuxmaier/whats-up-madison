@@ -1,5 +1,6 @@
 """Unit tests for ticketmaster.py parsing helpers."""
-from datetime import datetime, time as dtime
+from datetime import datetime
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from app.scrapers.ticketmaster import (
@@ -9,7 +10,6 @@ from app.scrapers.ticketmaster import (
     _map_categories,
     _parse_event,
 )
-
 
 # Literal venue boilerplate copy harvested from the Discovery API responses
 # that drove audit issues #177 (Rebirth Brass Band) and #178 (Highly Suspect).

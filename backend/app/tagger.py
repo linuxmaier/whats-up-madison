@@ -2,7 +2,6 @@ import json
 import logging
 import re
 import secrets
-from typing import Optional
 
 import anthropic
 from sqlalchemy import func
@@ -106,7 +105,7 @@ def _truncate_description(desc: str) -> str:
     return desc[: _MAX_DESCRIPTION_LEN - len(_TRUNCATION_SENTINEL)] + _TRUNCATION_SENTINEL
 
 
-def _build_event_payload(event: Event) -> Optional[dict]:
+def _build_event_payload(event: Event) -> dict | None:
     """Returns None if the event lacks sufficient context for tagging."""
     desc = event.description
     if not desc or len(desc.strip()) < _MIN_DESCRIPTION_LEN:
@@ -226,7 +225,7 @@ def _call_llm(
     return predictions, usage
 
 
-def tag_untagged_events(db: Session, model: Optional[str] = None) -> dict:
+def tag_untagged_events(db: Session, model: str | None = None) -> dict:
     """Tag active events that have no categories and a sufficient description."""
     model = model or settings.tagger_model
 

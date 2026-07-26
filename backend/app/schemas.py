@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, field_validator
@@ -29,13 +28,13 @@ class SourceRef(BaseModel):
 class EventResponse(BaseModel):
     id: UUID
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     start_at: datetime
-    end_at: Optional[datetime] = None
-    venue_name: Optional[str] = None
-    venue_address: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
+    end_at: datetime | None = None
+    venue_name: str | None = None
+    venue_address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     categories: list[str] = []
     all_day: bool = False
     status: str

@@ -1,10 +1,14 @@
 import json
+import logging
 import re
 import time
-from datetime import date, datetime, time as dtime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from app.scrapers.base import BaseSource, RawEvent, clean_html_text, http_get_with_retry
+
+logger = logging.getLogger(__name__)
 
 _API_URL = "https://www.visitmadison.com/includes/rest_v2/plugins_events_events_by_date/find/"
 _EVENTS_PAGE_URL = "https://www.visitmadison.com/events/"
@@ -108,7 +112,7 @@ def _fetch_token() -> str:
         if match:
             return match.group(1)
     except Exception:
-        pass
+        logger.warning("Visit Madison: failed to fetch fresh API token, using fallback", exc_info=True)
     return _FALLBACK_TOKEN
 
 

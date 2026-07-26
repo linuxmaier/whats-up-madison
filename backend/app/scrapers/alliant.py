@@ -2,7 +2,8 @@ import html
 import logging
 import re
 import time
-from datetime import datetime, time as dtime, timedelta
+from datetime import datetime, timedelta
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag

@@ -3,7 +3,6 @@ import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -62,7 +61,7 @@ _throttle_lock = threading.Lock()
 _last_call_at: float = 0.0
 
 
-def normalize_lookup(venue_name: Optional[str], venue_address: Optional[str]) -> Optional[str]:
+def normalize_lookup(venue_name: str | None, venue_address: str | None) -> str | None:
     """Build a stable cache key from whatever venue info we have."""
     if venue_address and venue_address.strip():
         addr = re.sub(r"\s+", " ", venue_address.strip().lower())
@@ -93,7 +92,7 @@ def _throttle() -> None:
         _last_call_at = time.monotonic()
 
 
-def _call_nominatim(lookup_key: str) -> tuple[str, Optional[dict]]:
+def _call_nominatim(lookup_key: str) -> tuple[str, dict | None]:
     """Returns (status, result_dict_or_None). status is success|not_found|error."""
     # Nominatim rejects `q` combined with structured params (city/state/country),
     # so always use free-text `q` and bias to Madison via the viewbox bbox.
@@ -130,7 +129,7 @@ def _call_nominatim(lookup_key: str) -> tuple[str, Optional[dict]]:
     return "success", data[0]
 
 
-def _coords_of(row: Optional[VenueGeocode]) -> Optional[tuple[float, float]]:
+def _coords_of(row: VenueGeocode | None) -> tuple[float, float] | None:
     if row is None or row.status != "success":
         return None
     if row.latitude is None or row.longitude is None:
@@ -155,7 +154,7 @@ def _is_expired(row: VenueGeocode) -> bool:
     return datetime.now(timezone.utc) - stamped > _ERROR_RETRY_AFTER
 
 
-def _apply_result(row: VenueGeocode, lookup_key: str, status: str, result: Optional[dict]) -> None:
+def _apply_result(row: VenueGeocode, lookup_key: str, status: str, result: dict | None) -> None:
     """Write a fresh Nominatim outcome onto a cache row."""
     row.status = status
     row.geocoder = "nominatim"
@@ -173,7 +172,7 @@ def _apply_result(row: VenueGeocode, lookup_key: str, status: str, result: Optio
             row.longitude = None
 
 
-def geocode_lookup(lookup_key: str, db: Session) -> Optional[tuple[float, float]]:
+def geocode_lookup(lookup_key: str, db: Session) -> tuple[float, float] | None:
     """Return cached or freshly-fetched (lat, lng) for a lookup key, or None."""
     cached = db.query(VenueGeocode).filter(VenueGeocode.lookup_key == lookup_key).first()
     if cached is not None and not _is_expired(cached):

@@ -6,8 +6,8 @@ from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
-from sqlalchemy import cast, select
 from sqlalchemy import Date as SQLDate
+from sqlalchemy import cast, select
 from sqlalchemy.orm import Session
 
 from app import canonical_venues
@@ -162,10 +162,9 @@ def ingest_chunk(
             # any prior `end_at`, since the prior end was anchored to a
             # now-stale start. (For other fields None is treated as
             # "no opinion" so cross-source merging keeps lower-source values.)
-            if is_higher_priority or is_self_rerun_at_top:
-                if event.end_at != raw.end_at:
-                    event.end_at = raw.end_at
-                    changed = True
+            if (is_higher_priority or is_self_rerun_at_top) and event.end_at != raw.end_at:
+                event.end_at = raw.end_at
+                changed = True
             # Propagate description=None on self-reruns at the top of the priority
             # stack. If this source previously stored a description but now emits
             # None (e.g. a boilerplate filter added after initial ingest), clear
@@ -404,7 +403,7 @@ def _find_fuzzy_duplicate(
         return None
 
     raw_title = _normalize_title_for_match(title)
-    best: "Event | None" = None
+    best: Event | None = None
     best_ratio = 0.0
     best_by_headliner = False
     for event in candidates:

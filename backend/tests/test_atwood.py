@@ -1,17 +1,18 @@
 """Unit tests for atwood.py parsing helpers."""
 import time
-from datetime import datetime, time as dtime
+from datetime import datetime
+from datetime import time as dtime
 
 from bs4 import BeautifulSoup
 
 from app.scrapers.atwood import (
     _CENTRAL,
     _DEFAULT_VENUE_NAME,
+    AtwoodMusicHallSource,
     _normalize_address,
     _parse_card,
     _parse_time,
     _show_time_from_description,
-    AtwoodMusicHallSource,
 )
 
 

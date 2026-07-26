@@ -1,7 +1,8 @@
 import logging
 import re
 import time
-from datetime import date, datetime, time as dtime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from app.config import settings
@@ -37,8 +38,10 @@ _BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         # Door / show times prefix — variants seen: "Doors at 7:00 pm",
         # "Doors at 7:00 pm | Show at 8:00 pm", "Doors open at 6:00 pm",
         # "Doors at 8: 00 pm | Show at 9:00 pm" (TM occasionally injects spaces).
-        r"Doors?\s+(?:open(?:s|ed)?\s+)?at\s+\d{1,2}\s*:?\s*\d{2}\s?[ap]m\s*"
-        r"(?:\|\s*Shows?\s+at\s+\d{1,2}\s*:?\s*\d{2}\s?[ap]m\s*)?",
+        (
+            r"Doors?\s+(?:open(?:s|ed)?\s+)?at\s+\d{1,2}\s*:?\s*\d{2}\s?[ap]m\s*"
+            r"(?:\|\s*Shows?\s+at\s+\d{1,2}\s*:?\s*\d{2}\s?[ap]m\s*)?"
+        ),
         # Cashless venue policy
         r"CASHLESS\s+VENUE[^.]*(?:\.|$)",
         r"No\s+cash\s+accepted\.",
@@ -52,8 +55,10 @@ _BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         #  - "All tickets are standing and seated General Admission and are
         #    available on a first come first serve basis."
         r"All\s+General\s+Admission\s+[Tt]ickets?\s+are\s+(?:good\s+for|seated)[^.]*(?:\.|$)",
-        r"All\s+tickets\s+are\s+(?:standing|seated)[^.]*"
-        r"(?:General\s+Admission|first\s+come\s+first\s+serve)[^.]*(?:\.|$)",
+        (
+            r"All\s+tickets\s+are\s+(?:standing|seated)[^.]*"
+            r"(?:General\s+Admission|first\s+come\s+first\s+serve)[^.]*(?:\.|$)"
+        ),
         r"They\s+are\s+available\s+on\s+a\s+first\s+come\s+first\s+serve\s+basis\.",
         # Orpheum tiered-GA-pricing boilerplate
         r"A\s+tiered\s+system\s+is\s+in\s+place\s+for\s+General\s+Admission[^.]*(?:\.|$)",

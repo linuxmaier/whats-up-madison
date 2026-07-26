@@ -21,10 +21,12 @@ jobs:
           python-version: "3.12"
       # Pinned deliberately. Unpinned, CI silently follows ruff releases: 0.16.0
       # enabled new rules by default and turned this job red against unmodified
-      # main (128 findings), which also skipped `test` and `deploy` since both
-      # depend on it. Keep in sync with the conda env; see #249 for clearing the
-      # backlog and bumping the pin.
-      - run: pip install ruff==0.15.12
+      # main, which also skipped `test` and `deploy` since both depend on it
+      # (#249). The 0.16.0 backlog (123 findings) is cleared as of #249 —
+      # backend/pyproject.toml's [tool.ruff.lint] documents the handful that
+      # are deliberate patterns rather than defects. Keep this in sync with
+      # the conda env.
+      - run: pip install ruff==0.16.0
       - run: ruff check backend/
 
   frontend-lint:

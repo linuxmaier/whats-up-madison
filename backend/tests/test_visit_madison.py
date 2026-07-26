@@ -1,5 +1,6 @@
 """Unit tests for visit_madison.py time-parsing strategy helpers."""
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 from app.scrapers.visit_madison import (
@@ -69,7 +70,7 @@ class TestParseFromToTimes:
     def test_midnight_wrap(self):
         result = _parse_from_to_times("From: 11:00 PM to 01:00 AM", _DATE)
         assert result is not None
-        start_at, end_at = result
+        _, end_at = result
         assert end_at == datetime.combine(_DATE + timedelta(days=1), dtime(1, 0, 0), tzinfo=_CENTRAL)
 
     def test_case_insensitive(self):

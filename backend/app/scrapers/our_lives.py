@@ -111,9 +111,7 @@ def _in_madison_metro(venue: dict | None) -> bool:
         return True
     if _MADISON_ZIP_RE.search(venue.get("zip") or ""):
         return True
-    if _MADISON_ZIP_RE.search(address):
-        return True
-    return False
+    return bool(_MADISON_ZIP_RE.search(address))
 
 
 def _parse_dt(raw: str | None, tz: ZoneInfo) -> datetime | None:
