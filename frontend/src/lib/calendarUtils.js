@@ -1,3 +1,5 @@
+import { isSafeHttpUrl } from './sources'
+
 function toUtcDateStr(isoStr) {
   return new Date(isoStr).toISOString().slice(0, 10).replace(/-/g, '')
 }
@@ -28,7 +30,9 @@ function buildIcalContent(event) {
   const { id, title, description, start_at, end_at, venue_name, venue_address, all_day, sources } = event
   const now = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '') + 'Z'
   const location = [venue_name, venue_address].filter(Boolean).join(', ')
-  const url = sources?.[0]?.source_url || ''
+  // Unescaped on the URL: line, so only a well-formed http(s) URL may go in (#265).
+  const firstUrl = sources?.[0]?.source_url
+  const url = isSafeHttpUrl(firstUrl) && !/[\r\n]/.test(firstUrl) ? firstUrl : ''
 
   const dtstart = all_day
     ? `DTSTART;VALUE=DATE:${toUtcDateStr(start_at)}`
@@ -80,7 +84,7 @@ export function formatEventText(event) {
       ? `${timeFmt.format(new Date(start_at))} – ${timeFmt.format(new Date(end_at))}`
       : timeFmt.format(new Date(start_at))
   const location = [venue_name, venue_address].filter(Boolean).join(', ')
-  const url = sources?.[0]?.source_url
+  const url = isSafeHttpUrl(sources?.[0]?.source_url) ? sources[0].source_url : null
   return [
     title,
     `${dateStr} · ${timeStr}`,

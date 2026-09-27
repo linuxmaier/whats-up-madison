@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
+import pytest
+
 from app.ingest import ingest_events, reconcile_duplicate_events
 from app.models import Event, EventSource
 from app.scrapers.base import RawEvent
@@ -1478,3 +1480,35 @@ def test_reconcile_is_idempotent(db):
 
     second = reconcile_duplicate_events(db, dry_run=False)
     assert second["merges"] == 0
+
+
+# ---------------------------------------------------------------------------
+# source_url scheme validation (#265)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_url", [
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "vbscript:msgbox(1)",
+    "/relative/path",
+    "https://",
+    " https://example.com/event/1",
+    "https://example.com/a\r\nX-INJECTED:1",
+    "",
+])
+def test_unsafe_source_url_is_dropped(db, bad_url):
+    stats = ingest_events("Source A", [_raw(source_url=bad_url)], db)
+
+    assert stats["inserted"] == 0
+    assert db.query(Event).count() == 0
+    assert db.query(EventSource).count() == 0
+
+
+def test_unsafe_source_url_does_not_drop_rest_of_batch(db):
+    good = _raw(title="Good Event", source_url="http://example.com/good")
+    bad = _raw(title="Bad Event", source_url="javascript:alert(1)")
+
+    stats = ingest_events("Source A", [bad, good], db)
+
+    assert stats["inserted"] == 1
+    assert [e.title for e in db.query(Event).all()] == ["Good Event"]
