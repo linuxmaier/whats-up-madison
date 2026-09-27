@@ -5,6 +5,7 @@ from collections import defaultdict
 from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
+from urllib.parse import urlparse
 
 from sqlalchemy import Date as SQLDate
 from sqlalchemy import cast, select
@@ -86,6 +87,11 @@ def ingest_chunk(
     # "Overture Center-Overture Hall") merge with events from sources that
     # use the building name (e.g. Ticketmaster's "Overture Center for the Arts").
     raw_events = [_normalize_raw_venue(r) for r in raw_events]
+
+    # source_url is scraped, untrusted, and rendered as a link and written into
+    # .ics exports (#265). Drop anything that isn't a plain http(s) URL rather
+    # than storing it — every legitimate scraper emits https today.
+    raw_events = [r for r in raw_events if _has_safe_source_url(r)]
 
     # Collapse raws that share a canonical_hash — a single source can return
     # multiple records that map to the same event (e.g. Visit Madison lists two
@@ -501,6 +507,22 @@ def _best_existing_rank(event: Event, db: Session) -> float:
     if not rows:
         return float("inf")
     return min(_source_rank(r.source_name) for r in rows)
+
+
+def _has_safe_source_url(raw: RawEvent) -> bool:
+    url = raw.source_url or ""
+    parsed = urlparse(url)
+    if (
+        parsed.scheme in ("http", "https")
+        and parsed.netloc
+        # No whitespace or control chars — a CR/LF would inject lines into .ics.
+        and not any(ord(ch) <= 0x20 or ord(ch) == 0x7F for ch in url)
+    ):
+        return True
+    logger.warning(
+        "Dropping %r from %s: unsafe source_url %r", raw.title, raw.source_name, url
+    )
+    return False
 
 
 def _normalize_raw_venue(raw: RawEvent) -> RawEvent:
