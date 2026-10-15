@@ -1,0 +1,12 @@
+# Toolchain pins for local dev. Keep in step with .github/workflows/ci.yml
+# (python-version, node-version, and the ruff==X pin) so local runs match CI.
+[tools]
+python = "3.12"
+uv = "0.12.23"
+node = "20"
+ruff = "0.16.0"
+
+[env]
+# Creates backend/.venv on first `cd` into the repo and activates it, so
+# `python`, `pytest`, `uvicorn` resolve to the project venv.
+_.python.venv = { path = "backend/.venv", create = true }
