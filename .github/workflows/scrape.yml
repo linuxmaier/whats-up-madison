@@ -17,7 +17,10 @@ jobs:
         # auto_stop_machines='stop' with min_machines_running=0, so when curl
         # disconnects this request is the only thing keeping the machine up and Fly
         # autostops it a few minutes later — potentially SIGINT-ing a run mid-flight.
+        # --fail-with-body (not -f) so a non-2xx still prints the per-scraper
+        # results: /admin/scrape returns 500 with the full body when tagging
+        # fails, and the body is the only place that says which stage broke.
         run: |
-          curl -f -X POST https://whats-up-madison.fly.dev/admin/scrape \
+          curl --fail-with-body -X POST https://whats-up-madison.fly.dev/admin/scrape \
             -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
             --max-time 3600

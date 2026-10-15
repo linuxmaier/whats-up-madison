@@ -13,6 +13,17 @@ from app.models import Event
 
 logger = logging.getLogger(__name__)
 
+
+class TaggingFailedError(RuntimeError):
+    """Every LLM batch in a tagging pass failed. Carries the pass stats."""
+
+    def __init__(self, stats: dict):
+        self.stats = stats
+        super().__init__(
+            f"All {stats['failed_batches']} tagging batches failed: {stats.get('last_error')}"
+        )
+
+
 _CATEGORIES_SET = frozenset(CATEGORIES)
 _MIN_DESCRIPTION_LEN = 80  # shorter descriptions don't give the LLM enough signal and waste tokens
 _MAX_DESCRIPTION_LEN = 2000  # bounds token spend and prompt-injection attack surface
@@ -254,6 +265,8 @@ def tag_untagged_events(db: Session, model: str | None = None) -> dict:
 
     tagged = 0
     batches = 0
+    failed_batches = 0
+    last_error: str | None = None
     batch_size = 25  # balances prompt-cache hit rate vs. risk of one bad event polluting a batch
 
     for i in range(0, len(to_tag), batch_size):
@@ -276,6 +289,8 @@ def tag_untagged_events(db: Session, model: str | None = None) -> dict:
                 "Tagger: LLM call failed for batch starting at index %d: %s", i, e
             )
             batches += 1
+            failed_batches += 1
+            last_error = str(e)
             continue
 
         for token, (event, _) in zip(tokens, batch_items):
@@ -287,9 +302,21 @@ def tag_untagged_events(db: Session, model: str | None = None) -> dict:
         db.commit()
         batches += 1
 
-    return {
+    stats = {
         "tagged": tagged,
         "skipped_no_description": skipped_no_desc,
         "candidates": len(candidates),
         "batches": batches,
+        "failed_batches": failed_batches,
     }
+    if last_error is not None:
+        stats["last_error"] = last_error
+
+    # A pass where every batch failed is an outage (bad key, exhausted
+    # credits, retired model), not a quiet day. Swallowing per-batch errors
+    # used to make it indistinguishable from success: the API ran out of
+    # credits and /admin/scrape kept returning 200 with `tagged: 0` for over
+    # five weeks while the untagged backlog grew from 44 to 836 events.
+    if batches and failed_batches == batches:
+        raise TaggingFailedError(stats)
+    return stats
