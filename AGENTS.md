@@ -8,9 +8,25 @@ Self-populating Madison WI events aggregator. Backend scrapes known sources dail
 
 ## Environment
 
-- **Conda env:** `whats-up-madison` (Python 3.12)
-- **Always use:** `~/miniconda3/envs/whats-up-madison/bin/<tool>` for pip, pytest, ruff, etc.
-- **Never use:** bare `pip` or system Python
+- **Toolchain:** [mise](https://mise.jdx.dev) pins Python 3.12, uv, Node 20, and ruff 0.16.0 in `mise.toml` at the repo root, matching the versions in `.github/workflows/ci.yml`. When you bump one, bump the other.
+- **Python venv:** `backend/.venv` (gitignored). mise creates and activates it automatically from the `[env]` block in `mise.toml`. Backend deps are installed into it with uv.
+- **First-time setup** (from the repo root):
+  ```
+  mise trust && mise install
+  mise exec -- uv pip install -r backend/requirements.txt
+  ```
+  Re-run the second line after `backend/requirements.txt` changes.
+- **Always use `mise exec -- <tool>`** for python, pytest, ruff, uvicorn, uv, npm, etc. That form works in non-interactive shells (agents, scripts) where `mise activate` hasn't run. In an interactive shell with mise activated, bare `pytest` / `ruff` resolve to the same binaries.
+- **Never use:** bare `pip`, system Python, or conda. The old `~/miniconda3/envs/whats-up-madison` env no longer exists.
+
+### Running tests
+
+```
+cd backend
+ADMIN_API_KEY= mise exec -- pytest tests/
+```
+
+The tests need Docker running, because `conftest.py` starts a throwaway `postgres:16-alpine` via testcontainers. **Blank `ADMIN_API_KEY` as shown.** `Settings` reads `backend/.env`, and if your local `.env` sets an admin key, the admin-endpoint tests in `test_admin_scrape.py` (which send no `X-Admin-Key`) fail with 401. CI has no `.env`, so it never hits this.
 
 ## Running the Stack Locally
 
@@ -30,7 +46,7 @@ cd frontend && npm run dev
 Without Docker (requires local Postgres at localhost:5432):
 ```
 cd backend
-~/miniconda3/envs/whats-up-madison/bin/uvicorn app.main:app --reload
+mise exec -- uvicorn app.main:app --reload
 ```
 
 ## DB Schema Changes
@@ -238,7 +254,7 @@ Loaded from `backend/.env` (gitignored). See `backend/.env.example` for required
 
 ## Frontend
 
-React + Vite + Tailwind CSS. Node deps are project-local (not in conda).
+React + Vite + Tailwind CSS. Node itself is pinned by `mise.toml`; node deps are project-local in `frontend/node_modules`.
 
 ### Source priority
 
@@ -280,7 +296,7 @@ npm run build    # production build
 ## Linting
 
 ```
-~/miniconda3/envs/whats-up-madison/bin/ruff check backend/
+mise exec -- ruff check backend/
 ```
 
 ## Skills

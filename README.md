@@ -15,15 +15,16 @@ A self-populating events calendar for Madison, WI. Automatically aggregates even
 ### Prerequisites
 
 - Docker + Docker Compose
-- [miniconda](https://docs.conda.io/en/latest/miniconda.html) (for local Python tooling)
-- Node.js + npm (for frontend)
+- [mise](https://mise.jdx.dev) (installs the pinned Python, uv, Node, and ruff from `mise.toml`)
 
-### 1. Create the conda environment
+### 1. Install the toolchain and backend deps
 
 ```
-~/miniconda3/bin/conda create -n whats-up-madison python=3.12
-~/miniconda3/envs/whats-up-madison/bin/pip install -r backend/requirements.txt
+mise trust && mise install
+mise exec -- uv pip install -r backend/requirements.txt
 ```
+
+This creates the project venv at `backend/.venv`. mise activates it automatically.
 
 ### 2. Configure environment variables
 
