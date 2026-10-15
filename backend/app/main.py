@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -28,7 +29,7 @@ from app.scrapers.our_lives import OurLivesSource
 from app.scrapers.ticketmaster import TicketmasterSource
 from app.scrapers.visit_madison import VisitMadisonSource
 from app.scrapers.wco import WisconsinChamberOrchestraSource
-from app.tagger import tag_untagged_events
+from app.tagger import TaggingFailedError, tag_untagged_events
 
 logging.config.dictConfig({
     "version": 1,
@@ -256,8 +257,17 @@ def trigger_scrape(
     if not skip_tag:
         try:
             results["_tagging"] = tag_untagged_events(db)
+        except TaggingFailedError as e:
+            results["_tagging"] = {**e.stats, "error": str(e)}
         except Exception as e:
             results["_tagging"] = {"error": str(e)}
+        if "error" in results["_tagging"]:
+            # Ingest already committed, so the body is still worth returning,
+            # but the status has to say the pipeline failed: a 200 here is
+            # what let the daily scrape stay green through weeks of tagging
+            # outage. The workflow uses curl --fail-with-body to log it.
+            logger.warning("Tagging failed: %s", results["_tagging"]["error"])
+            return JSONResponse(status_code=500, content=results)
     return results
 
 
@@ -266,7 +276,10 @@ def trigger_tag(model: str | None = None, _: None = Depends(require_admin_key), 
     try:
         return tag_untagged_events(db, model=model)
     except Exception as e:
-        return {"error": str(e)}
+        # Previously returned 200 with an {"error": ...} body, same trap as
+        # /admin/geocode had.
+        logger.exception("Tag run failed")
+        raise HTTPException(status_code=500, detail=f"Tag run failed: {e}") from e
 
 
 @app.post("/admin/geocode")

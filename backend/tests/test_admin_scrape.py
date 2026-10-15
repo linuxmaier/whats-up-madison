@@ -7,6 +7,7 @@ from app import main as main_module
 from app.database import get_db
 from app.main import app
 from app.scrapers.base import BaseSource, RawEvent
+from app.tagger import TaggingFailedError
 
 
 class _FakeSource(BaseSource):
@@ -200,3 +201,40 @@ def test_geocode_failure_is_not_reported_as_success(client, monkeypatch):
     # And the lock must still be free afterwards.
     assert main_module._geocode_lock.acquire(blocking=False)
     main_module._geocode_lock.release()
+
+
+def test_tagging_outage_returns_500_with_full_body(client, fakes, monkeypatch):
+    # Ingest has already committed by the time tagging runs, so the per-scraper
+    # results must still come back — but the status has to fail CI.
+    def failing_tag(_db, model=None):
+        raise TaggingFailedError(
+            {"tagged": 0, "batches": 3, "failed_batches": 3, "last_error": "credit balance is too low"}
+        )
+
+    monkeypatch.setattr(main_module, "tag_untagged_events", failing_tag)
+    resp = client.post("/admin/scrape")
+    assert resp.status_code == 500
+    body = resp.json()
+    assert "Fake A" in body and "Fake B" in body
+    assert body["_tagging"]["failed_batches"] == 3
+    assert "credit balance is too low" in body["_tagging"]["error"]
+
+
+def test_tagging_config_error_returns_500(client, fakes, monkeypatch):
+    def failing_tag(_db, model=None):
+        raise ValueError("ANTHROPIC_API_KEY is not configured")
+
+    monkeypatch.setattr(main_module, "tag_untagged_events", failing_tag)
+    resp = client.post("/admin/scrape")
+    assert resp.status_code == 500
+    assert resp.json()["_tagging"] == {"error": "ANTHROPIC_API_KEY is not configured"}
+
+
+def test_admin_tag_returns_500_when_tagging_fails(client, monkeypatch):
+    def failing_tag(_db, model=None):
+        raise TaggingFailedError({"tagged": 0, "batches": 1, "failed_batches": 1, "last_error": "boom"})
+
+    monkeypatch.setattr(main_module, "tag_untagged_events", failing_tag)
+    resp = client.post("/admin/tag")
+    assert resp.status_code == 500
+    assert "boom" in resp.json()["detail"]

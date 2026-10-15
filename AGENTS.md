@@ -214,6 +214,7 @@ When changing this logic, re-run the collapse report: group every distinct `venu
 - Also exposed as `POST /admin/tag?model=<model-id>` for one-off runs or model evaluation. Without `model`, uses `settings.tagger_model` (default `claude-haiku-4-5`).
 - Idempotent — events that already have at least one category are skipped, so re-running is cheap.
 - Requires `ANTHROPIC_API_KEY` in `backend/.env`; raises `ValueError` if unset.
+- **A pass where every batch fails raises `TaggingFailedError`.** Per-batch LLM errors are still caught (one bad batch shouldn't void the rest) and counted in `failed_batches` / `last_error`, but if *all* of them fail, `/admin/tag` returns 500 and `/admin/scrape` returns 500 with its full per-scraper body (the workflow uses `curl --fail-with-body` to log it). Before this, an exhausted Anthropic credit balance kept the daily scrape green with `tagged: 0` from 2026-09-07 to 2026-10-15 while the untagged backlog grew to 836 events. A partial failure (some batches succeed) still returns 200 — check `failed_batches`.
 - Skips events with short descriptions (<80 chars). Their card just shows no categories rather than wasting a token budget on guesses; if a source improves its descriptions, the next run picks them up.
 
 Prompt-injection hardening (see `docs/PROMPT_INJECTION.md`):
