@@ -8,7 +8,7 @@ Self-populating Madison WI events aggregator. Backend scrapes known sources dail
 
 ## Environment
 
-- **Toolchain:** [mise](https://mise.jdx.dev) pins Python 3.12, uv, Node 20, and ruff 0.16.0 in `mise.toml` at the repo root, matching the versions in `.github/workflows/ci.yml`. When you bump one, bump the other.
+- **Toolchain:** [mise](https://mise.jdx.dev) pins Python 3.12, uv, Node 24, and ruff 0.16.0 in `mise.toml` at the repo root, matching the versions in `.github/workflows/ci.yml`. When you bump one, bump the other.
 - **Python venv:** `backend/.venv` (gitignored). mise creates and activates it automatically from the `[env]` block in `mise.toml`. Backend deps are installed into it with uv.
 - **First-time setup** (from the repo root):
   ```

@@ -3,7 +3,7 @@
 [tools]
 python = "3.12"
 uv = "0.12.23"
-node = "20"
+node = "24"
 ruff = "0.16.0"
 
 [env]
